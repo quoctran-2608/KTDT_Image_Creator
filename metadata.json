@@ -1,0 +1,6 @@
+{
+  "name": "KTDT AI Image Rebuilder",
+  "description": "Ứng dụng hỗ trợ biên tập viên xây dựng và tái tạo ảnh minh họa bài viết chuẩn phong cách kinh tế, thuế, doanh nghiệp bằng AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

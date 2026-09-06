@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <script>
+      (function() {
+        try {
+          if (typeof window === 'undefined') return;
+
+          function patchDescriptor(prop, descriptor) {
+            if (prop === 'fetch' && descriptor && typeof descriptor.get === 'function' && typeof descriptor.set === 'undefined') {
+              var customVal = undefined;
+              var origGet = descriptor.get;
+              descriptor.set = function(v) {
+                customVal = v;
+              };
+              descriptor.get = function() {
+                return customVal !== undefined ? customVal : origGet.call(this);
+              };
+              descriptor.configurable = true;
+            }
+            return descriptor;
+          }
+
+          var origDefineProp = Object.defineProperty;
+          Object.defineProperty = function(obj, prop, descriptor) {
+            return origDefineProp.call(Object, obj, prop, patchDescriptor(prop, descriptor));
+          };
+
+          if (typeof Reflect !== 'undefined' && Reflect.defineProperty) {
+            var origReflectDefineProp = Reflect.defineProperty;
+            Reflect.defineProperty = function(target, prop, descriptor) {
+              return origReflectDefineProp.call(Reflect, target, prop, patchDescriptor(prop, descriptor));
+            };
+          }
+
+          var targets = [
+            window,
+            window.constructor ? window.constructor.prototype : null,
+            Object.getPrototypeOf(window)
+          ];
+
+          for (var i = 0; i < targets.length; i++) {
+            var target = targets[i];
+            if (!target) continue;
+            try {
+              var desc = Object.getOwnPropertyDescriptor(target, 'fetch');
+              if (desc && desc.get && typeof desc.set === 'undefined') {
+                (function(t, d) {
+                  var customVal = undefined;
+                  var origGet = d.get;
+                  origDefineProp.call(Object, t, 'fetch', {
+                    get: function() {
+                      return customVal !== undefined ? customVal : origGet.call(this);
+                    },
+                    set: function(v) {
+                      customVal = v;
+                    },
+                    configurable: true,
+                    enumerable: d.enumerable !== false
+                  });
+                })(target, desc);
+              }
+            } catch (e) {}
+          }
+        } catch (err) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KTDT AI Image Rebuilder</title>
+    <meta name="description" content="Ứng dụng hỗ trợ biên tập viên xây dựng và tái tạo ảnh minh họa bài viết chuẩn phong cách kinh tế, thuế, doanh nghiệp bằng AI." />
+    <meta property="og:title" content="KTDT AI Image Rebuilder" />
+    <meta property="og:description" content="Ứng dụng hỗ trợ biên tập viên xây dựng và tái tạo ảnh minh họa bài viết chuẩn phong cách kinh tế, thuế, doanh nghiệp bằng AI." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
