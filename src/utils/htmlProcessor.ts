@@ -709,6 +709,17 @@ export function updateArticleHtml(
 ): string {
   const root = parse(originalHtml);
   const prefix = normalizeBasePath(options.imagePathPrefix ?? 'uploads/articles/2026/09/');
+  const escapeHtml = (value: string) =>
+    value.replace(/[&<>"']/g, (char) => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;',
+      };
+      return entities[char];
+    });
 
   // Locate the same prose container
   const candidateSelectors = [
@@ -790,6 +801,47 @@ export function updateArticleHtml(
         if (finalAlt) {
           dedicatedFeaturedImg.setAttribute('alt', finalAlt);
         }
+        if (featuredPlan.title) {
+          dedicatedFeaturedImg.setAttribute('title', featuredPlan.title);
+        }
+
+        const figureParent = dedicatedFeaturedImg.parentNode as HTMLElement | null;
+        const isFigure = figureParent?.tagName?.toLowerCase() === 'figure';
+        const showCaption = Boolean(featuredPlan.show_caption && featuredPlan.caption);
+        const showCreditAllowed = Boolean(
+          options.showCreditInArticle ?? options.brandProfile?.show_credit_in_article ?? false
+        );
+        const effectiveCredit =
+          featuredPlan.credit ||
+          options.brandProfile?.default_credit ||
+          options.brandProfile?.brand_name ||
+          '';
+        const showCredit =
+          showCreditAllowed &&
+          featuredPlan.show_credit !== false &&
+          Boolean(effectiveCredit);
+
+        if (isFigure && (showCaption || showCredit)) {
+          const figcaptionContent = [
+            showCaption
+              ? `<span class="image-caption">${escapeHtml(featuredPlan.caption || '')}</span>`
+              : '',
+            showCredit
+              ? `<span class="image-credit">Nguồn: ${escapeHtml(effectiveCredit)}</span>`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          const existingFigcaption = figureParent.querySelector('figcaption');
+          if (existingFigcaption) {
+            existingFigcaption.set_content(figcaptionContent);
+          } else {
+            figureParent.insertAdjacentHTML(
+              'beforeend',
+              `<figcaption class="article-figcaption">${figcaptionContent}</figcaption>`
+            );
+          }
+        }
       }
     }
     // If featuredPlan has not succeeded, og:image and dedicatedFeaturedImg remain untouched.
@@ -867,7 +919,7 @@ export function updateArticleHtml(
 
       if (showCaption || showCredit) {
         const captionText = showCaption ? slotPlan.caption : '';
-        const creditText = showCredit ? slotPlan.credit : '';
+        const creditText = showCredit ? effectiveCredit : '';
 
         // Check if targetImg already has a parent <figure>
         let figureParent: HTMLElement | null = null;
@@ -877,8 +929,8 @@ export function updateArticleHtml(
         }
 
         const figcaptionContent = [
-          captionText ? `<span class="image-caption">${captionText}</span>` : '',
-          creditText ? `<span class="image-credit">Nguồn: ${creditText}</span>` : '',
+          captionText ? `<span class="image-caption">${escapeHtml(captionText)}</span>` : '',
+          creditText ? `<span class="image-credit">Nguồn: ${escapeHtml(creditText)}</span>` : '',
         ].filter(Boolean).join(' ');
 
         if (figureParent) {

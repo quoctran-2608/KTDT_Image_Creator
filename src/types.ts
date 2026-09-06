@@ -103,6 +103,9 @@ export interface BrandProfileManifest {
   apply_to: string;
   default_credit: string;
   show_credit_in_article: boolean;
+  // Optional compatibility fields from older handoff manifests.
+  logo_mode?: 'custom_upload' | 'ktdt_default';
+  credit_applied?: string;
 }
 
 export interface ImageSlotPlan {
@@ -308,4 +311,3 @@ export interface ImageManifest {
   };
   updated_html: string;
 }
-

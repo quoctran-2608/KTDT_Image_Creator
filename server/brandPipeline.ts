@@ -79,7 +79,13 @@ export async function applyBrandingWithSharp(
     targetWidth?: number;
     targetHeight?: number;
   } = {}
-): Promise<{ buffer: Buffer; mimeType: 'image/webp'; width: number; height: number }> {
+): Promise<{
+  buffer: Buffer;
+  mimeType: 'image/webp';
+  width: number;
+  height: number;
+  brandApplied: boolean;
+}> {
   const brandName = (brandConfig.brand_name || '').trim();
   
   // Watermark mode resolution
@@ -116,14 +122,19 @@ export async function applyBrandingWithSharp(
   const isSourceDoc = Boolean(options.isSourceDoc);
 
   // Determine whether branding applies to this specific image type
+  const hasExplicitScope = Boolean(brandConfig.apply_to);
   const applyTo = brandConfig.apply_to || 'all';
   let shouldApplyBrand = isEnabled;
-  if (isSourceDoc) {
-    shouldApplyBrand = isEnabled && (applyTo === 'all' || brandConfig.apply_to_source_docs === true);
+  if (hasExplicitScope) {
+    // New Brand Profile scope is authoritative. Source documents are inline assets.
+    shouldApplyBrand = isEnabled &&
+      (applyTo === 'all' || (isFeatured ? applyTo === 'featured_only' : applyTo === 'inline_only'));
+  } else if (isSourceDoc) {
+    shouldApplyBrand = isEnabled && brandConfig.apply_to_source_docs !== false;
   } else if (isFeatured) {
-    shouldApplyBrand = isEnabled && (applyTo === 'all' || applyTo === 'featured_only' || brandConfig.apply_to_featured !== false);
+    shouldApplyBrand = isEnabled && brandConfig.apply_to_featured !== false;
   } else {
-    shouldApplyBrand = isEnabled && (applyTo === 'all' || applyTo === 'inline_only' || brandConfig.apply_to_ai_inline !== false);
+    shouldApplyBrand = isEnabled && brandConfig.apply_to_ai_inline !== false;
   }
 
   // 1. Initial image load
@@ -153,6 +164,33 @@ export async function applyBrandingWithSharp(
   if (isSourceDoc) {
     if (shouldApplyBrand && (showLogo || showBrandName)) {
       const footerH = 46;
+      let footerLogoBase64 = '';
+
+      // Use the exact uploaded logo in the source-document footer as well.
+      // This remains deterministic and never asks AI to redraw brand artwork.
+      if (showLogo) {
+        const sourceLogoBuffer =
+          brandConfig.logo_url && brandConfig.logo_url.startsWith('data:')
+            ? bufferFromDataUrl(brandConfig.logo_url)
+            : Buffer.from(DEFAULT_BRAND_LOGO_SVG);
+        try {
+          footerLogoBase64 = (
+            await sharp(sourceLogoBuffer)
+              .resize(28, 28, {
+                fit: 'contain',
+                background: { r: 0, g: 0, b: 0, alpha: 0 },
+              })
+              .png()
+              .toBuffer()
+          ).toString('base64');
+        } catch (err) {
+          console.warn('Could not process source-document logo, falling back to default SVG:', err);
+          footerLogoBase64 = (
+            await sharp(Buffer.from(DEFAULT_BRAND_LOGO_SVG)).resize(28, 28).png().toBuffer()
+          ).toString('base64');
+        }
+      }
+
       // Extend bottom canvas
       sharpInstance = sharpInstance.extend({
         bottom: footerH,
@@ -165,9 +203,8 @@ export async function applyBrandingWithSharp(
         <rect width="${currentW}" height="${footerH}" fill="#0f172a" />
         <line x1="0" y1="0" x2="${currentW}" y2="0" stroke="#334155" stroke-width="1" />
         <g transform="translate(16, 9)">
-          ${showLogo ? `
-            <rect width="28" height="28" rx="6" fill="#0F766E" />
-            <circle cx="14" cy="14" r="7" fill="#ffffff" opacity="0.9" />
+          ${showLogo && footerLogoBase64 ? `
+            <image href="data:image/png;base64,${footerLogoBase64}" width="28" height="28" />
           ` : ''}
           <text x="${showLogo ? 38 : 0}" y="19" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" opacity="${opacity}">
             ${escapeXml(brandName)}
@@ -195,6 +232,7 @@ export async function applyBrandingWithSharp(
       mimeType: 'image/webp',
       width: resultMeta.width || currentW,
       height: resultMeta.height || currentH,
+      brandApplied: shouldApplyBrand && (showLogo || showBrandName),
     };
   }
 
@@ -308,6 +346,7 @@ export async function applyBrandingWithSharp(
     mimeType: 'image/webp',
     width: finalMeta.width || currentW,
     height: finalMeta.height || currentH,
+    brandApplied: shouldApplyBrand && (showLogo || showBrandName),
   };
 }
 
@@ -325,7 +364,13 @@ export async function rebuildSourceImage(
     title?: string;
     aspect_ratio?: string;
   }
-): Promise<{ imageDataUrl: string; mimeType: 'image/webp'; width: number; height: number }> {
+): Promise<{
+  imageDataUrl: string;
+  mimeType: 'image/webp';
+  width: number;
+  height: number;
+  brandApplied: boolean;
+}> {
   let sourceBuffer: Buffer | null = null;
 
   if (sourceUrlOrData.startsWith('data:')) {
@@ -415,6 +460,7 @@ export async function rebuildSourceImage(
     mimeType: 'image/webp',
     width: result.width,
     height: result.height,
+    brandApplied: result.brandApplied,
   };
 }
 

@@ -47,8 +47,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
-        onChange({
-          ...brandProfile,
+        updateProfile({
           logo_url: dataUrl,
           logo_uploaded: true,
           show_logo: true,
@@ -59,8 +58,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
   };
 
   const handleRemoveLogo = () => {
-    onChange({
-      ...brandProfile,
+    updateProfile({
       logo_url: '',
       logo_uploaded: false,
     });
@@ -88,6 +86,14 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
 
   const defaultCreditText =
     brandProfile.default_credit || brandProfile.brand_name || 'Kế Toán Diệu Tâm';
+
+  const updateProfile = (changes: Partial<BrandProfile>) => {
+    const next = { ...brandProfile, ...changes };
+    if ('brand_name' in changes && !brandProfile.default_credit) {
+      next.default_credit = changes.brand_name || '';
+    }
+    onChange(next);
+  };
 
   const content = (
     <div className="space-y-6">
@@ -226,8 +232,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 type="text"
                 value={brandProfile.brand_name ?? ''}
                 onChange={(e) =>
-                  onChange({
-                    ...brandProfile,
+                  updateProfile({
                     brand_name: e.target.value,
                   })
                 }
@@ -279,8 +284,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                     key={item.id}
                     type="button"
                     onClick={() =>
-                      onChange({
-                        ...brandProfile,
+                      updateProfile({
                         watermark_mode: item.id,
                         enabled: item.id !== 'none',
                         show_logo: item.id === 'logo_and_text' || item.id === 'logo_only',
@@ -338,8 +342,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 <select
                   value={currentPosition}
                   onChange={(e) =>
-                    onChange({
-                      ...brandProfile,
+                    updateProfile({
                       position: e.target.value as WatermarkPosition,
                     })
                   }
@@ -368,8 +371,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                       key={sz.id}
                       type="button"
                       onClick={() =>
-                        onChange({
-                          ...brandProfile,
+                        updateProfile({
                           logo_size: sz.id as 'small' | 'medium' | 'large',
                         })
                       }
@@ -402,8 +404,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                   step="0.05"
                   value={currentOpacity}
                   onChange={(e) =>
-                    onChange({
-                      ...brandProfile,
+                    updateProfile({
                       opacity: parseFloat(e.target.value),
                     })
                   }
@@ -431,8 +432,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                       key={p.val}
                       type="button"
                       onClick={() =>
-                        onChange({
-                          ...brandProfile,
+                        updateProfile({
                           edge_padding: p.val,
                           padding: p.val,
                         })
@@ -479,8 +479,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                       key={sc.id}
                       type="button"
                       onClick={() =>
-                        onChange({
-                          ...brandProfile,
+                        updateProfile({
                           apply_to: sc.id,
                           apply_to_featured: sc.id === 'all' || sc.id === 'featured_only',
                           apply_to_ai_inline: sc.id === 'all' || sc.id === 'inline_only',
@@ -520,8 +519,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 type="text"
                 value={defaultCreditText}
                 onChange={(e) =>
-                  onChange({
-                    ...brandProfile,
+                  updateProfile({
                     default_credit: e.target.value,
                   })
                 }
@@ -540,8 +538,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                   type="checkbox"
                   checked={Boolean(brandProfile.show_credit_in_article)}
                   onChange={(e) =>
-                    onChange({
-                      ...brandProfile,
+                    updateProfile({
                       show_credit_in_article: e.target.checked,
                     })
                   }
@@ -685,7 +682,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-              <span>Được xử lý trực tiếp trên GPU máy chủ</span>
+              <span>Được xử lý quyết định bằng Sharp trên máy chủ</span>
               <span className="font-semibold text-teal-700 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5" />
                 Sắc nét 100%

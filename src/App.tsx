@@ -25,6 +25,12 @@ import {
   generateEditorialCaption,
 } from './utils/htmlProcessor';
 import { generateClientMockSvg } from './utils/mockImageGenerator';
+import {
+  DEFAULT_BRAND_PROFILE,
+  getEffectiveCredit,
+  normalizeBrandProfile,
+  toBrandProfileManifest,
+} from './utils/brandProfile';
 import { AlertCircle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import { SourceDiscoveryModal } from './components/SourceDiscoveryModal';
 
@@ -45,19 +51,11 @@ export default function App() {
   );
 
   // Brand Profile & Watermark Config
-  const [brandProfile, setBrandProfile] = useState<BrandProfile>({
-    brand_name: 'Kế Toán Diệu Tâm',
-    logo_url: '',
-    show_logo: true,
-    show_brand_name: true,
-    position: 'bottom-right',
-    logo_size: 'medium',
-    opacity: 0.85,
-    edge_padding: 24,
-    apply_to_featured: true,
-    apply_to_ai_inline: true,
-    apply_to_source_docs: true,
-  });
+  const [brandProfile, setBrandProfile] = useState<BrandProfile>(DEFAULT_BRAND_PROFILE);
+  const normalizedBrandProfile = normalizeBrandProfile(brandProfile);
+  const handleUpdateBrandProfile = (profile: BrandProfile) => {
+    setBrandProfile(normalizeBrandProfile(profile));
+  };
 
   // 3-Step Workflow State
   const [currentStep, setCurrentStep] = useState<WorkflowStep>(1);
@@ -176,15 +174,22 @@ export default function App() {
         const contextHint = slot.nearby_heading || slot.context_heading || data?.title || '';
         const title = slot.title || generateEditorialTitle(cleanedAlt, contextHint);
         const caption = slot.caption || generateEditorialCaption(cleanedAlt, contextHint);
-        const credit = slot.credit || brandProfile.brand_name;
+        const creditOverride =
+          slot.credit === DEFAULT_BRAND_PROFILE.default_credit ? undefined : slot.credit;
         const isSensitive = slot.is_sensitive_source || slot.classification === 'KEEP_ORIGINAL';
         const strategy = slot.processing_strategy || (isSensitive ? 'REBUILD_FROM_SOURCE' : 'GENERATE_AI');
 
         return {
           ...slot,
-          selected: true,
+          selected: slot.selected ?? strategy !== 'NEEDS_DECISION',
           processing_strategy: strategy,
-          classification: strategy === 'GENERATE_AI' ? 'REPLACE_AI' : 'KEEP_ORIGINAL',
+          classification:
+            slot.classification ||
+            (strategy === 'GENERATE_AI'
+              ? 'REPLACE_AI'
+              : strategy === 'REBUILD_FROM_SOURCE'
+              ? 'KEEP_ORIGINAL'
+              : 'MANUAL_REVIEW'),
           is_sensitive_source: isSensitive,
           final_filename: slot.final_filename || slot.suggested_filename,
           final_src: slot.final_src || `${cleanPath}${slot.suggested_filename}`,
@@ -193,7 +198,7 @@ export default function App() {
           alt_text: cleanedAlt,
           title,
           caption,
-          credit,
+          credit: creditOverride,
           show_caption: true,
           show_credit: true,
           concept: slot.concept || slot.suggested_concept,
@@ -219,15 +224,22 @@ export default function App() {
           const contextHint = slot.nearby_heading || slot.context_heading || localData?.title || '';
           const title = slot.title || generateEditorialTitle(cleanedAlt, contextHint);
           const caption = slot.caption || generateEditorialCaption(cleanedAlt, contextHint);
-          const credit = slot.credit || brandProfile.brand_name;
+          const creditOverride =
+            slot.credit === DEFAULT_BRAND_PROFILE.default_credit ? undefined : slot.credit;
           const isSensitive = slot.is_sensitive_source || slot.classification === 'KEEP_ORIGINAL';
           const strategy = slot.processing_strategy || (isSensitive ? 'REBUILD_FROM_SOURCE' : 'GENERATE_AI');
 
           return {
             ...slot,
-            selected: true,
+            selected: slot.selected ?? strategy !== 'NEEDS_DECISION',
             processing_strategy: strategy,
-            classification: strategy === 'GENERATE_AI' ? 'REPLACE_AI' : 'KEEP_ORIGINAL',
+            classification:
+              slot.classification ||
+              (strategy === 'GENERATE_AI'
+                ? 'REPLACE_AI'
+                : strategy === 'REBUILD_FROM_SOURCE'
+                ? 'KEEP_ORIGINAL'
+                : 'MANUAL_REVIEW'),
             is_sensitive_source: isSensitive,
             final_filename: slot.final_filename || slot.suggested_filename,
             final_src: slot.final_src || `${cleanPath}${slot.suggested_filename}`,
@@ -236,7 +248,7 @@ export default function App() {
             alt_text: cleanedAlt,
             title,
             caption,
-            credit,
+            credit: creditOverride,
             show_caption: true,
             show_credit: true,
             concept: slot.concept || slot.suggested_concept,
@@ -352,7 +364,7 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               slot: currentSlot,
-              brandConfig: brandProfile,
+              brandConfig: normalizedBrandProfile,
             }),
           });
 
@@ -374,7 +386,7 @@ export default function App() {
                   height: resData.height || 600,
                   mime_type: 'image/webp',
                   brand_applied: Boolean(resData.brand_applied),
-                  brand_profile: brandProfile.brand_name,
+                  brand_profile: normalizedBrandProfile.brand_name,
                   generation_method: 'deterministic_rebuild',
                   alt: next[i].alt || next[i].suggested_alt,
                   concept: next[i].concept || next[i].suggested_concept,
@@ -420,7 +432,7 @@ export default function App() {
               body: JSON.stringify({
                 slot: currentSlot,
                 articleTitle: analysis?.title || 'Bài viết kinh tế thuế',
-                brandConfig: brandProfile,
+                brandConfig: normalizedBrandProfile,
               }),
             });
 
@@ -456,7 +468,7 @@ export default function App() {
                 height: next[i].aspect_ratio === '16:9' ? 720 : 600,
                 mime_type: 'image/webp',
                 brand_applied: brandApplied,
-                brand_profile: brandProfile.brand_name,
+                brand_profile: normalizedBrandProfile.brand_name,
                 generation_method: 'vertex_ai',
                 alt: next[i].alt || next[i].suggested_alt,
                 concept: next[i].concept || next[i].suggested_concept,
@@ -516,7 +528,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             slot: currentSlot,
-            brandConfig: brandProfile,
+            brandConfig: normalizedBrandProfile,
           }),
         });
 
@@ -536,7 +548,7 @@ export default function App() {
               height: resData.height || 600,
               mime_type: 'image/webp',
               brand_applied: Boolean(resData.brand_applied),
-              brand_profile: brandProfile.brand_name,
+              brand_profile: normalizedBrandProfile.brand_name,
               generation_method: 'deterministic_rebuild',
               error_message: undefined,
             };
@@ -563,7 +575,7 @@ export default function App() {
           body: JSON.stringify({
             slot: currentSlot,
             articleTitle: analysis?.title || 'Bài viết kinh tế thuế',
-            brandConfig: brandProfile,
+            brandConfig: normalizedBrandProfile,
           }),
         });
 
@@ -599,7 +611,7 @@ export default function App() {
             height: next[slotIndex].aspect_ratio === '16:9' ? 720 : 600,
             mime_type: 'image/webp',
             brand_applied: brandApplied,
-            brand_profile: brandProfile.brand_name,
+            brand_profile: normalizedBrandProfile.brand_name,
             generation_method: 'vertex_ai',
             alt: next[slotIndex].alt || next[slotIndex].suggested_alt,
             concept: next[slotIndex].concept || next[slotIndex].suggested_concept,
@@ -626,8 +638,8 @@ export default function App() {
     ? updateArticleHtml(htmlSource, plan, {
         updateFeaturedImage: true,
         imagePathPrefix: outputBasePath,
-        brandProfile: brandProfile,
-        showCreditInArticle: brandProfile.show_credit_in_article,
+        brandProfile: normalizedBrandProfile,
+        showCreditInArticle: normalizedBrandProfile.show_credit_in_article,
       })
     : '';
 
@@ -656,13 +668,13 @@ export default function App() {
       alt_text: proposedAlt,
       title: slot.title || proposedAlt,
       caption: slot.caption || '',
-      credit: slot.credit || brandProfile.default_credit || brandProfile.brand_name || 'Kế Toán Diệu Tâm',
+      credit: getEffectiveCredit(slot.credit, normalizedBrandProfile),
       width: slot.width || (slot.type === 'featured' ? 1280 : 800),
       height: slot.height || (slot.type === 'featured' ? 720 : 600),
       aspect_ratio: slot.aspect_ratio || (slot.type === 'featured' ? '16:9' : '4:3'),
       mime_type: 'image/webp',
       brand_applied: Boolean(slot.brand_applied),
-      brand_profile: brandProfile.brand_name,
+      brand_profile: normalizedBrandProfile.brand_name,
       generation_method:
         slot.generation_method ||
         (slot.processing_strategy === 'REBUILD_FROM_SOURCE'
@@ -707,15 +719,14 @@ export default function App() {
         source_discovery_summary: analysis.source_discovery_summary,
         generated_at: new Date().toISOString(),
         output_base_path: cleanPath,
-        brand_config: brandProfile,
+        brand_config: normalizedBrandProfile,
         brand_profile: {
-          brand_name: brandProfile.brand_name || 'Kế Toán Diệu Tâm',
-          logo_mode: (brandProfile.logo_url || brandProfile.logo_uploaded) ? 'custom_upload' : 'ktdt_default',
-          watermark_mode: brandProfile.watermark_mode || 'logo_and_text',
-          position: brandProfile.position || 'bottom-right',
-          apply_to: brandProfile.apply_to || 'all',
-          credit_applied: brandProfile.default_credit || brandProfile.brand_name || 'Kế Toán Diệu Tâm',
-          show_credit_in_article: brandProfile.show_credit_in_article ?? false,
+          ...toBrandProfileManifest(normalizedBrandProfile),
+          logo_mode:
+            normalizedBrandProfile.logo_url || normalizedBrandProfile.logo_uploaded
+              ? 'custom_upload'
+              : 'ktdt_default',
+          credit_applied: getEffectiveCredit(undefined, normalizedBrandProfile),
         },
         provider: {
           type: 'vertex_ai',
@@ -831,8 +842,8 @@ export default function App() {
             outputBasePath={outputBasePath}
             onOutputBasePathChange={handleOutputBasePathChange}
             onBackToStep1={() => setCurrentStep(1)}
-            brandProfile={brandProfile}
-            onUpdateBrandProfile={setBrandProfile}
+            brandProfile={normalizedBrandProfile}
+            onUpdateBrandProfile={handleUpdateBrandProfile}
           />
         )}
 
@@ -894,8 +905,9 @@ export default function App() {
       <SourceDiscoveryModal
         isOpen={showDiscoveryModal}
         onClose={() => setShowDiscoveryModal(false)}
-        summary={analysis?.source_discovery_summary}
-        plan={plan}
+        summaryItems={analysis?.source_discovery_summary || []}
+        articleUrl={analysis?.article_url || articleUrl}
+        baseUrl={analysis?.base_url || baseUrl}
       />
 
       {/* Editorial Clean Footer */}

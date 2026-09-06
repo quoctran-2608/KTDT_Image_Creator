@@ -1059,7 +1059,7 @@ app.post('/api/generate-image', async (req, res) => {
       finalImageDataUrl = `data:image/webp;base64,${branded.buffer.toString('base64')}`;
       finalWidth = branded.width;
       finalHeight = branded.height;
-      brandApplied = true;
+      brandApplied = branded.brandApplied;
     } catch (sharpErr) {
       console.warn('Sharp branding pipeline warning (using raw result):', sharpErr);
     }
@@ -1159,7 +1159,7 @@ app.post('/api/rebuild-source-image', async (req, res) => {
       width: result.width,
       height: result.height,
       mime_type: 'image/webp',
-      brand_applied: Boolean(brandConfig?.apply_to_source_docs),
+      brand_applied: result.brandApplied,
       generation_method: 'deterministic_rebuild',
     });
   } catch (err: any) {
@@ -1260,7 +1260,7 @@ app.post('/api/generate-mock-image', async (req, res) => {
       finalImageDataUrl = `data:image/webp;base64,${branded.buffer.toString('base64')}`;
       finalWidth = branded.width;
       finalHeight = branded.height;
-      brandApplied = true;
+      brandApplied = branded.brandApplied;
     } catch (sharpErr) {
       console.warn('Sharp mock branding warning:', sharpErr);
     }

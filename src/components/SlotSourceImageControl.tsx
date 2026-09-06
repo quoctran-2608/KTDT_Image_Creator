@@ -50,7 +50,7 @@ export const SlotSourceImageControl: React.FC<SlotSourceImageControlProps> = ({
       if (srcInfo.method === 'manual_upload') helper = 'Nguồn: Tải lên từ máy tính';
       else if (srcInfo.method === 'clipboard_paste') helper = 'Nguồn: Dán từ clipboard';
       else if (srcInfo.method === 'manual_url') helper = 'Nguồn: URL nhập trực tiếp';
-      else if (srcInfo.method === 'live_article_dom') helper = 'Nguồn: URL bài viết gốc';
+      else if (srcInfo.method === 'live_article' || srcInfo.method === 'live_article_dom') helper = 'Nguồn: URL bài viết gốc';
       else if (srcInfo.method === 'base_url_resolve') helper = 'Nguồn: Base URL + src';
       else if (srcInfo.method === 'article_url_resolve') helper = 'Nguồn: URL bài viết';
 
@@ -253,7 +253,8 @@ export const SlotSourceImageControl: React.FC<SlotSourceImageControlProps> = ({
           )}
 
           {/* Mapping Confidence Badge */}
-          {srcInfo.mapping_confidence && srcInfo.method === 'live_article_dom' && (
+          {srcInfo.mapping_confidence &&
+            (srcInfo.method === 'live_article' || srcInfo.method === 'live_article_dom') && (
             <span
               className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
                 srcInfo.mapping_confidence === 'high'

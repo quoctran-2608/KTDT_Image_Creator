@@ -41,9 +41,9 @@ export const ResultGallery: React.FC<ResultGalleryProps> = ({
 
   const cleanPath = normalizeBasePath(outputBasePath);
 
-  // Filter slots that were selected for AI generation
+  // Show every selected publishing asset, including source-preserving rebuilds.
   const activeSlots = plan.filter(
-    (s) => s.classification === 'REPLACE_AI' && (s.selected || s.status === 'completed' || s.status === 'failed')
+    (s) => s.selected || s.status === 'completed' || s.status === 'failed'
   );
 
   const completedCount = activeSlots.filter(
@@ -70,7 +70,7 @@ export const ResultGallery: React.FC<ResultGalleryProps> = ({
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Xem lại hình ảnh đã tạo bằng AI. Bạn có thể phóng to, tải riêng từng ảnh hoặc yêu cầu AI tạo lại.
+            Xem lại ảnh AI và ảnh tái dựng từ nguồn. Bạn có thể phóng to, tải riêng từng ảnh hoặc xử lý lại.
           </p>
         </div>
 
@@ -179,7 +179,11 @@ export const ResultGallery: React.FC<ResultGalleryProps> = ({
                 {/* Status and Title */}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-800">
-                    {isFeatured ? 'Ảnh bìa (Featured)' : `Ảnh minh họa`}
+                    {isFeatured
+                      ? 'Ảnh bìa (Featured)'
+                      : slot.processing_strategy === 'REBUILD_FROM_SOURCE'
+                      ? 'Ảnh tái dựng từ nguồn'
+                      : 'Ảnh minh họa'}
                   </span>
 
                   {isSuccess ? (
