@@ -101,10 +101,11 @@ export interface BrandProfileManifest {
   opacity: number;
   padding: number;
   apply_to: string;
+  apply_to_source_docs: boolean;
   default_credit: string;
   show_credit_in_article: boolean;
   // Optional compatibility fields from older handoff manifests.
-  logo_mode?: 'custom_upload' | 'ktdt_default';
+  logo_mode?: 'custom_upload' | 'none';
   credit_applied?: string;
 }
 
@@ -234,7 +235,7 @@ export interface VertexConfigStatus {
 export interface ManifestSlotItem {
   slot_id: string;
   type: SlotType;
-  processing_strategy: 'GENERATE_AI' | 'REBUILD_FROM_SOURCE';
+  processing_strategy: ProcessingStrategy;
   generation_status: SlotStatus;
   original_src: string;
   final_src: string;

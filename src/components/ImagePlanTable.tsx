@@ -29,6 +29,7 @@ interface ImagePlanTableProps {
   plan: ImageSlotPlan[];
   brandProfile: BrandProfile;
   onUpdateBrandProfile: (profile: BrandProfile) => void;
+  onResetBrandProfile: () => void;
   onUpdateSlot: (index: number, updatedFields: Partial<ImageSlotPlan>) => void;
   onToggleAll: (selected: boolean) => void;
   onGenerateAll: () => void;
@@ -45,6 +46,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
   plan,
   brandProfile,
   onUpdateBrandProfile,
+  onResetBrandProfile,
   onUpdateSlot,
   onGenerateAll,
   isGenerating,
@@ -229,7 +231,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                 <ImageIcon className="w-3 h-3 text-teal-600 shrink-0" />
                 {brandProfile.logo_url || brandProfile.logo_uploaded
                   ? 'Logo: Đã tải'
-                  : 'Logo: Biểu trưng KTDT'}
+                  : 'Logo: Chưa tải'}
               </span>
 
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 font-medium text-slate-700 shadow-2xs">
@@ -293,6 +295,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
           onChange={onUpdateBrandProfile}
           isOpen={showBrandPanel}
           onClose={() => setShowBrandPanel(false)}
+          onReset={onResetBrandProfile}
           asModal={true}
         />
 

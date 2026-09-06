@@ -14,14 +14,17 @@ import {
   Layers,
   Settings2,
   Check,
+  RotateCcw,
 } from 'lucide-react';
 import { BrandProfile, WatermarkMode, WatermarkPosition, WatermarkScope } from '../types';
+import { hasUploadedLogo, resolveBrandWatermark } from '../utils/brandProfile';
 
 interface BrandProfilePanelProps {
   brandProfile: BrandProfile;
   onChange: (profile: BrandProfile) => void;
   isOpen?: boolean;
   onClose?: () => void;
+  onReset?: () => void;
   asModal?: boolean;
 }
 
@@ -30,6 +33,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
   onChange,
   isOpen = true,
   onClose,
+  onReset,
   asModal = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +90,8 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
 
   const defaultCreditText =
     brandProfile.default_credit || brandProfile.brand_name || 'Kế Toán Diệu Tâm';
+  const logoUploaded = hasUploadedLogo(brandProfile);
+  const resolvedWatermark = resolveBrandWatermark(brandProfile);
 
   const updateProfile = (changes: Partial<BrandProfile>) => {
     const next = { ...brandProfile, ...changes };
@@ -161,7 +167,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 ) : (
                   <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
                     <ImageIcon className="w-6 h-6 mb-1 text-slate-300" />
-                    <span className="text-[10px] font-medium text-slate-400">Biểu trưng KTDT</span>
+                    <span className="text-[10px] font-medium text-slate-400">Chưa có logo thương hiệu</span>
                   </div>
                 )}
               </div>
@@ -183,10 +189,10 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                     className="h-8 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-semibold text-xs text-slate-800 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5 text-teal-600" />
-                    <span>{brandProfile.logo_url ? 'Thay đổi logo' : 'Tải logo PNG / SVG'}</span>
+                    <span>{logoUploaded ? 'Thay đổi logo' : 'Tải logo PNG / SVG / WebP'}</span>
                   </button>
 
-                  {brandProfile.logo_url && (
+                  {logoUploaded && (
                     <button
                       type="button"
                       onClick={handleRemoveLogo}
@@ -200,13 +206,13 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 </div>
 
                 <p className="text-[11px] text-slate-500 leading-normal">
-                  {brandProfile.logo_url ? (
+                  {logoUploaded ? (
                     <span className="text-emerald-700 font-medium flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       Đang sử dụng logo tùy chỉnh của bạn (được bảo toàn tỉ lệ khi đóng dấu).
                     </span>
                   ) : (
-                    'Khuyên dùng file PNG nền trong suốt hoặc SVG. Nếu chưa tải, hệ thống sẽ dùng biểu trưng nhận diện chuẩn của Diệu Tâm.'
+                    'Chưa có logo thương hiệu. Bạn có thể dùng watermark tên thương hiệu hoặc tải PNG, SVG, WebP để đóng dấu logo thật.'
                   )}
                 </p>
               </div>
@@ -243,6 +249,22 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 💡 <em>Nếu file logo bạn vừa tải lên đã chứa sẵn tên thương hiệu dạng hình ảnh, bạn có thể để trống ô này để hệ thống chỉ đóng dấu logo mà không thêm chữ lặp lại.</em>
               </p>
             </div>
+
+            {currentMode === 'logo_only' && !logoUploaded && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                <strong>Bạn cần tải logo trước khi dùng chế độ Chỉ logo.</strong> Hệ thống sẽ không tự tạo hoặc dùng logo giả.
+              </div>
+            )}
+            {currentMode === 'logo_and_text' && !logoUploaded && resolvedWatermark.showBrandName && (
+              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-[11px] text-sky-900 leading-relaxed">
+                Chưa có logo; hệ thống tạm dùng tên thương hiệu làm watermark chữ.
+              </div>
+            )}
+            {currentMode === 'logo_and_text' && !logoUploaded && !resolvedWatermark.showBrandName && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                Chưa có logo và tên thương hiệu đang trống, nên ảnh sẽ không nhận watermark.
+              </div>
+            )}
           </div>
 
           {/* Section C: Watermark Mode */}
@@ -498,6 +520,29 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 })}
               </div>
             </div>
+
+            <div className="pt-3 border-t border-slate-100">
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(brandProfile.apply_to_source_docs)}
+                  onChange={(e) =>
+                    updateProfile({
+                      apply_to_source_docs: e.target.checked,
+                    })
+                  }
+                  className="w-4 h-4 mt-0.5 text-teal-600 rounded border-slate-300 focus:ring-teal-600 cursor-pointer"
+                />
+                <div className="space-y-1">
+                  <span className="font-bold text-xs text-slate-800 block">
+                    Đóng dấu lên tài liệu nguồn
+                  </span>
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Áp dụng cho biểu mẫu, bảng số liệu, ảnh chụp chứng từ hoặc tài liệu được tái tạo từ ảnh gốc.
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -588,7 +633,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
               </div>
 
               {/* Dynamic Watermark Badge */}
-              {currentMode !== 'none' && (
+              {resolvedWatermark.isApplied && (
                 <div
                   className="absolute z-20 pointer-events-none transition-all duration-200 flex items-center"
                   style={{
@@ -621,7 +666,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                       backgroundColor: `rgba(15, 23, 42, ${currentOpacity * 0.95})`,
                     }}
                   >
-                    {(currentMode === 'logo_and_text' || currentMode === 'logo_only') && (
+                    {resolvedWatermark.showLogo && (
                       <div
                         className="rounded-md overflow-hidden shrink-0 flex items-center justify-center bg-white/10"
                         style={{
@@ -639,22 +684,15 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                               : '22px',
                         }}
                       >
-                        {brandProfile.logo_url ? (
-                          <img
-                            src={brandProfile.logo_url}
-                            alt="Watermark logo"
-                            className="max-w-full max-h-full object-contain"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-teal-600 rounded flex items-center justify-center text-[10px] font-bold text-white">
-                            KT
-                          </div>
-                        )}
+                        <img
+                          src={brandProfile.logo_url}
+                          alt="Watermark logo"
+                          className="max-w-full max-h-full object-contain"
+                        />
                       </div>
                     )}
 
-                    {(currentMode === 'logo_and_text' || currentMode === 'text_only') &&
-                      Boolean(brandProfile.brand_name) && (
+                    {resolvedWatermark.showBrandName && (
                         <span
                           className="font-semibold text-white tracking-wide truncate max-w-[160px]"
                           style={{
@@ -674,9 +712,11 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 </div>
               )}
 
-              {currentMode === 'none' && (
+              {!resolvedWatermark.isApplied && (
                 <div className="absolute bottom-3 right-3 z-20 bg-slate-900/80 text-slate-400 text-[10px] px-2 py-1 rounded-md border border-slate-700">
-                  Watermark đã tắt
+                  {currentMode === 'logo_only' && !logoUploaded
+                    ? 'Cần tải logo để đóng dấu'
+                    : 'Watermark đã tắt'}
                 </div>
               )}
             </div>
@@ -715,6 +755,16 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {onReset && (
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Khôi phục mặc định</span>
+                </button>
+              )}
               {onClose && (
                 <button
                   type="button"

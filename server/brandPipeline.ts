@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { Sharp } from 'sharp';
 import { safeFetchImageBuffer } from './sourceDiscovery.js';
 
 export interface BrandConfigInput {
@@ -87,7 +87,10 @@ export async function applyBrandingWithSharp(
   brandApplied: boolean;
 }> {
   const brandName = (brandConfig.brand_name || '').trim();
-  
+  const hasUploadedLogo = /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(
+    brandConfig.logo_url || ''
+  );
+
   // Watermark mode resolution
   let watermarkMode: 'logo_and_text' | 'logo_only' | 'text_only' | 'none' = 'logo_and_text';
   if (brandConfig.watermark_mode) {
@@ -102,10 +105,13 @@ export async function applyBrandingWithSharp(
 
   const isEnabled = brandConfig.enabled !== false && watermarkMode !== 'none';
 
-  // If editor uploads a logo that already visually contains brand text, brandName can be left blank.
-  // When blank, do not add extra text, use logo only.
-  const showLogo = isEnabled && (watermarkMode === 'logo_and_text' || watermarkMode === 'logo_only');
-  const showBrandName = isEnabled && (watermarkMode === 'logo_and_text' || watermarkMode === 'text_only') && Boolean(brandName);
+  // A logo is only valid when the editor supplied an exact image data URL.
+  // Never synthesize, redraw, or fall back to a built-in logo in production output.
+  const wantsLogo = watermarkMode === 'logo_and_text' || watermarkMode === 'logo_only';
+  const showBrandName =
+    isEnabled &&
+    (watermarkMode === 'logo_and_text' || watermarkMode === 'text_only') &&
+    Boolean(brandName);
 
   const rawPosition = (brandConfig.position || 'bottom-right').replace('_', '-');
   const position = (
@@ -121,16 +127,13 @@ export async function applyBrandingWithSharp(
   const isFeatured = options.slotType === 'featured';
   const isSourceDoc = Boolean(options.isSourceDoc);
 
-  // Determine whether branding applies to this specific image type
+  // Determine whether branding applies to generated featured and inline images.
   const hasExplicitScope = Boolean(brandConfig.apply_to);
   const applyTo = brandConfig.apply_to || 'all';
   let shouldApplyBrand = isEnabled;
   if (hasExplicitScope) {
-    // New Brand Profile scope is authoritative. Source documents are inline assets.
     shouldApplyBrand = isEnabled &&
       (applyTo === 'all' || (isFeatured ? applyTo === 'featured_only' : applyTo === 'inline_only'));
-  } else if (isSourceDoc) {
-    shouldApplyBrand = isEnabled && brandConfig.apply_to_source_docs !== false;
   } else if (isFeatured) {
     shouldApplyBrand = isEnabled && brandConfig.apply_to_featured !== false;
   } else {
@@ -154,120 +157,82 @@ export async function applyBrandingWithSharp(
     withoutEnlargement: true,
   });
 
-  const currentMeta = await sharpInstance.metadata();
-  const currentW = currentMeta.width || finalWidth;
-  const currentH = currentMeta.height || finalHeight;
+  // Sharp metadata does not resolve resize transforms. Calculate the real output size
+  // so a watermark composite never exceeds a small source image with withoutEnlargement.
+  const resizeScale = Math.min(
+    finalWidth / originalWidth,
+    finalHeight / originalHeight,
+    1
+  );
+  const currentW = Math.max(1, Math.round(originalWidth * resizeScale));
+  const currentH = Math.max(1, Math.round(originalHeight * resizeScale));
 
-  // 2. Special handling for Source Documents (Factual forms, tax docs, tables)
-  // Per requirement: Do NOT overlay branding across document content!
-  // Instead, extend canvas with a clean separate bottom footer bar outside document content.
+  // Source documents have an independent protection policy: normal inline scope never enables them.
+  // They receive a footer only when the editor explicitly opts in.
   if (isSourceDoc) {
-    if (shouldApplyBrand && (showLogo || showBrandName)) {
-      const footerH = 46;
-      let footerLogoBase64 = '';
-
-      // Use the exact uploaded logo in the source-document footer as well.
-      // This remains deterministic and never asks AI to redraw brand artwork.
-      if (showLogo) {
-        const sourceLogoBuffer =
-          brandConfig.logo_url && brandConfig.logo_url.startsWith('data:')
-            ? bufferFromDataUrl(brandConfig.logo_url)
-            : Buffer.from(DEFAULT_BRAND_LOGO_SVG);
-        try {
-          footerLogoBase64 = (
-            await sharp(sourceLogoBuffer)
-              .resize(28, 28, {
-                fit: 'contain',
-                background: { r: 0, g: 0, b: 0, alpha: 0 },
-              })
-              .png()
-              .toBuffer()
-          ).toString('base64');
-        } catch (err) {
-          console.warn('Could not process source-document logo, falling back to default SVG:', err);
-          footerLogoBase64 = (
-            await sharp(Buffer.from(DEFAULT_BRAND_LOGO_SVG)).resize(28, 28).png().toBuffer()
-          ).toString('base64');
-        }
-      }
-
-      // Extend bottom canvas
-      sharpInstance = sharpInstance.extend({
-        bottom: footerH,
-        background: '#0f172a', // Clean dark editorial slate bar
-      });
-
-      // Render crisp vector footer overlay
-      const footerSvg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${currentW}" height="${footerH}" viewBox="0 0 ${currentW} ${footerH}">
-        <rect width="${currentW}" height="${footerH}" fill="#0f172a" />
-        <line x1="0" y1="0" x2="${currentW}" y2="0" stroke="#334155" stroke-width="1" />
-        <g transform="translate(16, 9)">
-          ${showLogo && footerLogoBase64 ? `
-            <image href="data:image/png;base64,${footerLogoBase64}" width="28" height="28" />
-          ` : ''}
-          <text x="${showLogo ? 38 : 0}" y="19" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" opacity="${opacity}">
-            ${escapeXml(brandName)}
-          </text>
-          <text x="${showLogo ? 38 + brandName.length * 8 + 18 : brandName.length * 8 + 18}" y="19" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12">
-            • Tài liệu nghiệp vụ lưu trữ
-          </text>
-        </g>
-      </svg>
-      `.trim();
-
-      sharpInstance = sharpInstance.composite([
-        {
-          input: Buffer.from(footerSvg),
-          top: currentH,
-          left: 0,
-        },
-      ]);
-    }
-
-    const webpBuffer = await sharpInstance.webp({ quality: 92, effort: 4 }).toBuffer();
-    const resultMeta = await sharp(webpBuffer).metadata();
-    return {
-      buffer: webpBuffer,
-      mimeType: 'image/webp',
-      width: resultMeta.width || currentW,
-      height: resultMeta.height || currentH,
-      brandApplied: shouldApplyBrand && (showLogo || showBrandName),
-    };
+    const shouldApplySourceBrand =
+      isEnabled && brandConfig.apply_to_source_docs === true;
+    return applySourceDocumentBranding(
+      sharpInstance,
+      currentW,
+      currentH,
+      shouldApplySourceBrand,
+      wantsLogo,
+      hasUploadedLogo ? brandConfig.logo_url : undefined,
+      showBrandName,
+      brandName,
+      opacity
+    );
   }
 
-  // 3. For AI-Generated Images (Featured & Inline): Apply clean brand overlay badge
-  if (shouldApplyBrand && (showLogo || showBrandName)) {
-    const sizeConfig = {
+  // 2. For AI-Generated Images (Featured & Inline): Apply clean brand overlay badge.
+  const baseSizeConfig = {
       small: { logoH: 26, fontSize: 12, padY: 6, padX: 10, gap: 8 },
       medium: { logoH: 34, fontSize: 13, padY: 8, padX: 14, gap: 10 },
       large: { logoH: 42, fontSize: 15, padY: 10, padX: 18, gap: 12 },
     }[logoSize];
+  const textWidthAtBaseSize = showBrandName
+    ? Math.round(brandName.length * (baseSizeConfig.fontSize * 0.65))
+    : 0;
+  const baseBadgeW =
+    (wantsLogo ? baseSizeConfig.logoH : 0) +
+    (wantsLogo && showBrandName ? baseSizeConfig.gap : 0) +
+    textWidthAtBaseSize +
+    baseSizeConfig.padX * 2;
+  const baseBadgeH = baseSizeConfig.logoH + baseSizeConfig.padY * 2;
+  const badgeScale = Math.min(1, currentW / baseBadgeW, currentH / baseBadgeH);
+  const sizeConfig = {
+    logoH: Math.max(1, Math.floor(baseSizeConfig.logoH * badgeScale)),
+    fontSize: Math.max(1, Math.floor(baseSizeConfig.fontSize * badgeScale)),
+    padY: Math.max(1, Math.floor(baseSizeConfig.padY * badgeScale)),
+    padX: Math.max(1, Math.floor(baseSizeConfig.padX * badgeScale)),
+    gap: Math.max(1, Math.floor(baseSizeConfig.gap * badgeScale)),
+  };
+  const safeEdgePadding = Math.min(
+    Math.max(Math.floor(edgePadding * badgeScale), 0),
+    Math.max(0, Math.floor(Math.min(currentW, currentH) / 8))
+  );
 
-    // Prepare logo buffer
-    let logoBuffer: Buffer;
-    if (brandConfig.logo_url && brandConfig.logo_url.startsWith('data:')) {
-      logoBuffer = bufferFromDataUrl(brandConfig.logo_url);
-    } else {
-      logoBuffer = Buffer.from(DEFAULT_BRAND_LOGO_SVG);
+  let processedLogoPng: Buffer | null = null;
+  if (shouldApplyBrand && wantsLogo && hasUploadedLogo) {
+    try {
+      processedLogoPng = await sharp(bufferFromDataUrl(brandConfig.logo_url!))
+        .resize({
+          width: sizeConfig.logoH,
+          height: sizeConfig.logoH,
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .png()
+        .toBuffer();
+    } catch (err) {
+      console.warn('Could not process uploaded logo; skipping logo watermark:', err);
     }
+  }
+  const showLogo = Boolean(processedLogoPng);
+  const brandApplied = shouldApplyBrand && (showLogo || showBrandName);
 
-    // Convert logo to exact dimensions and PNG
-    let processedLogoPng: Buffer | null = null;
-    if (showLogo) {
-      try {
-        processedLogoPng = await sharp(logoBuffer)
-          .resize(sizeConfig.logoH, sizeConfig.logoH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-          .png()
-          .toBuffer();
-      } catch (err) {
-        console.warn('Could not process custom logo, falling back to default SVG:', err);
-        processedLogoPng = await sharp(Buffer.from(DEFAULT_BRAND_LOGO_SVG))
-          .resize(sizeConfig.logoH, sizeConfig.logoH)
-          .png()
-          .toBuffer();
-      }
-    }
+  if (brandApplied) {
 
     // Calculate approximate text width for background card
     const approxTextWidth = showBrandName ? Math.round(brandName.length * (sizeConfig.fontSize * 0.65)) : 0;
@@ -278,24 +243,24 @@ export async function applyBrandingWithSharp(
     const badgeH = sizeConfig.logoH + sizeConfig.padY * 2;
 
     // Calculate badge coordinates according to safe area and position
-    let badgeLeft = edgePadding;
-    let badgeTop = edgePadding;
+    let badgeLeft = safeEdgePadding;
+    let badgeTop = safeEdgePadding;
 
     if (position === 'bottom-right') {
-      badgeLeft = Math.max(currentW - badgeW - edgePadding, edgePadding);
-      badgeTop = Math.max(currentH - badgeH - edgePadding, edgePadding);
+      badgeLeft = Math.max(currentW - badgeW - safeEdgePadding, 0);
+      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
     } else if (position === 'bottom-left') {
-      badgeLeft = edgePadding;
-      badgeTop = Math.max(currentH - badgeH - edgePadding, edgePadding);
+      badgeLeft = safeEdgePadding;
+      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
     } else if (position === 'bottom-center') {
-      badgeLeft = Math.max(Math.round((currentW - badgeW) / 2), edgePadding);
-      badgeTop = Math.max(currentH - badgeH - edgePadding, edgePadding);
+      badgeLeft = Math.max(Math.round((currentW - badgeW) / 2), 0);
+      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
     } else if (position === 'top-right') {
-      badgeLeft = Math.max(currentW - badgeW - edgePadding, edgePadding);
-      badgeTop = edgePadding;
+      badgeLeft = Math.max(currentW - badgeW - safeEdgePadding, 0);
+      badgeTop = safeEdgePadding;
     } else if (position === 'top-left') {
-      badgeLeft = edgePadding;
-      badgeTop = edgePadding;
+      badgeLeft = safeEdgePadding;
+      badgeTop = safeEdgePadding;
     }
 
     // Render composite badge as SVG backdrop with text and embedded logo
@@ -346,7 +311,76 @@ export async function applyBrandingWithSharp(
     mimeType: 'image/webp',
     width: finalMeta.width || currentW,
     height: finalMeta.height || currentH,
-    brandApplied: shouldApplyBrand && (showLogo || showBrandName),
+    brandApplied,
+  };
+}
+
+async function applySourceDocumentBranding(
+  sharpInstance: Sharp,
+  currentW: number,
+  currentH: number,
+  shouldApplyBrand: boolean,
+  wantsLogo: boolean,
+  logoDataUrl: string | undefined,
+  showBrandName: boolean,
+  brandName: string,
+  opacity: number
+): Promise<{
+  buffer: Buffer;
+  mimeType: 'image/webp';
+  width: number;
+  height: number;
+  brandApplied: boolean;
+}> {
+  let footerLogoBase64 = '';
+  if (shouldApplyBrand && wantsLogo && logoDataUrl) {
+    try {
+      footerLogoBase64 = (
+        await sharp(bufferFromDataUrl(logoDataUrl))
+          .resize(28, 28, {
+            fit: 'contain',
+            background: { r: 0, g: 0, b: 0, alpha: 0 },
+          })
+          .png()
+          .toBuffer()
+      ).toString('base64');
+    } catch (err) {
+      console.warn('Could not process uploaded source-document logo; skipping logo:', err);
+    }
+  }
+
+  const showLogo = Boolean(footerLogoBase64);
+  const brandApplied = shouldApplyBrand && (showLogo || showBrandName);
+  let output = sharpInstance;
+
+  if (brandApplied) {
+    const footerH = 46;
+    output = output.extend({ bottom: footerH, background: '#0f172a' });
+    const footerSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${currentW}" height="${footerH}" viewBox="0 0 ${currentW} ${footerH}">
+        <rect width="${currentW}" height="${footerH}" fill="#0f172a" />
+        <line x1="0" y1="0" x2="${currentW}" y2="0" stroke="#334155" stroke-width="1" />
+        <g transform="translate(16, 9)">
+          ${showLogo ? `<image href="data:image/png;base64,${footerLogoBase64}" width="28" height="28" />` : ''}
+          ${showBrandName ? `
+            <text x="${showLogo ? 38 : 0}" y="19" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" opacity="${opacity}">
+              ${escapeXml(brandName)}
+            </text>
+          ` : ''}
+        </g>
+      </svg>
+    `.trim();
+    output = output.composite([{ input: Buffer.from(footerSvg), top: currentH, left: 0 }]);
+  }
+
+  const webpBuffer = await output.webp({ quality: 92, effort: 4 }).toBuffer();
+  const resultMeta = await sharp(webpBuffer).metadata();
+  return {
+    buffer: webpBuffer,
+    mimeType: 'image/webp',
+    width: resultMeta.width || currentW,
+    height: resultMeta.height || currentH,
+    brandApplied,
   };
 }
 
@@ -407,10 +441,6 @@ export async function rebuildSourceImage(
         <text x="${(docW - 120) / 2}" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="700" fill="#0f172a">
           ${docTitle}
         </text>
-        <text x="${(docW - 120) / 2}" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#64748b">
-          Tài liệu nguồn được bảo toàn nội dung • Định dạng WebP tối ưu
-        </text>
-
         <!-- Simulated Table Form Lines -->
         <g transform="translate(40, 220)">
           <rect width="${docW - 200}" height="36" fill="#f8fafc" stroke="#e2e8f0" />
@@ -433,14 +463,6 @@ export async function rebuildSourceImage(
           `).join('')}
         </g>
 
-        <!-- Stamp & Signatures Area (Preserved Source Motif) -->
-        <g transform="translate(480, 470)">
-          <rect width="180" height="2" fill="#cbd5e1" />
-          <circle cx="120" cy="40" r="32" fill="none" stroke="#e11d48" stroke-width="2.5" stroke-dasharray="4,4" opacity="0.75" />
-          <text x="120" y="44" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#e11d48" opacity="0.8">
-            CHỨNG TỪ NGUỒN
-          </text>
-        </g>
       </g>
     </svg>
     `.trim();

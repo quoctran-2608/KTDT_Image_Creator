@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { StepIndicator, WorkflowStep } from './components/StepIndicator';
 import { HtmlInputSection } from './components/HtmlInputSection';
@@ -27,8 +27,12 @@ import {
 import { generateClientMockSvg } from './utils/mockImageGenerator';
 import {
   DEFAULT_BRAND_PROFILE,
+  clearPersistedBrandProfile,
   getEffectiveCredit,
+  hasUploadedLogo,
+  loadPersistedBrandProfile,
   normalizeBrandProfile,
+  persistBrandProfile,
   toBrandProfileManifest,
 } from './utils/brandProfile';
 import { AlertCircle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
@@ -51,10 +55,16 @@ export default function App() {
   );
 
   // Brand Profile & Watermark Config
-  const [brandProfile, setBrandProfile] = useState<BrandProfile>(DEFAULT_BRAND_PROFILE);
+  const [brandProfile, setBrandProfile] = useState<BrandProfile>(loadPersistedBrandProfile);
+  const skipNextBrandProfilePersist = useRef(false);
   const normalizedBrandProfile = normalizeBrandProfile(brandProfile);
   const handleUpdateBrandProfile = (profile: BrandProfile) => {
     setBrandProfile(normalizeBrandProfile(profile));
+  };
+  const handleResetBrandProfile = () => {
+    skipNextBrandProfilePersist.current = true;
+    clearPersistedBrandProfile();
+    setBrandProfile(DEFAULT_BRAND_PROFILE);
   };
 
   // 3-Step Workflow State
@@ -84,6 +94,14 @@ export default function App() {
   useEffect(() => {
     fetchVertexStatus();
   }, []);
+
+  useEffect(() => {
+    if (skipNextBrandProfilePersist.current) {
+      skipNextBrandProfilePersist.current = false;
+      return;
+    }
+    persistBrandProfile(normalizedBrandProfile);
+  }, [brandProfile]);
 
   const handleUpdateVertexConfig = async (newConfig: {
     projectId?: string;
@@ -379,7 +397,8 @@ export default function App() {
                   ...next[i],
                   status: 'completed',
                   image_data_url: resData.imageDataUrl,
-                  prompt_summary: 'Bản tái tạo tối ưu từ tài liệu gốc, bảo toàn số liệu & đóng dấu nhận diện ngoài lề',
+                  prompt_summary:
+                    'Bản tái tạo tối ưu từ tài liệu gốc, bảo toàn số liệu; nhận diện chỉ áp dụng theo Hồ sơ thương hiệu.',
                   final_filename: fname,
                   final_src: `${cleanPath}${fname}`,
                   width: resData.width || 800,
@@ -420,7 +439,7 @@ export default function App() {
         try {
           let imageDataUrl: string | null = null;
           let promptSummary = currentSlot.suggested_concept;
-          let brandApplied = true;
+          let brandApplied = false;
 
           if (useMockMode) {
             imageDataUrl = generateClientMockSvg(currentSlot, analysis?.title);
@@ -541,7 +560,8 @@ export default function App() {
               ...next[slotIndex],
               status: 'completed',
               image_data_url: resData.imageDataUrl,
-              prompt_summary: 'Bản tái tạo tối ưu từ tài liệu gốc, bảo toàn số liệu & đóng dấu nhận diện',
+              prompt_summary:
+                'Bản tái tạo tối ưu từ tài liệu gốc, bảo toàn số liệu; nhận diện chỉ áp dụng theo Hồ sơ thương hiệu.',
               final_filename: fname,
               final_src: `${cleanPath}${fname}`,
               width: resData.width || 800,
@@ -563,7 +583,7 @@ export default function App() {
       // Otherwise generate via AI
       let imageDataUrl: string | null = null;
       let promptSummary = currentSlot.suggested_concept;
-      let brandApplied = true;
+      let brandApplied = false;
 
       if (useMockMode) {
         imageDataUrl = generateClientMockSvg(currentSlot, analysis?.title);
@@ -657,10 +677,7 @@ export default function App() {
     return {
       slot_id: slot.slot_id,
       type: slot.type,
-      processing_strategy:
-        slot.processing_strategy === 'REBUILD_FROM_SOURCE'
-          ? 'REBUILD_FROM_SOURCE'
-          : 'GENERATE_AI',
+      processing_strategy: slot.processing_strategy,
       generation_status: slot.status,
       original_src: oldSrc,
       final_src: isSuccess ? proposedSrc : oldSrc || proposedSrc,
@@ -723,9 +740,7 @@ export default function App() {
         brand_profile: {
           ...toBrandProfileManifest(normalizedBrandProfile),
           logo_mode:
-            normalizedBrandProfile.logo_url || normalizedBrandProfile.logo_uploaded
-              ? 'custom_upload'
-              : 'ktdt_default',
+            hasUploadedLogo(normalizedBrandProfile) ? 'custom_upload' : 'none',
           credit_applied: getEffectiveCredit(undefined, normalizedBrandProfile),
         },
         provider: {
@@ -844,6 +859,7 @@ export default function App() {
             onBackToStep1={() => setCurrentStep(1)}
             brandProfile={normalizedBrandProfile}
             onUpdateBrandProfile={handleUpdateBrandProfile}
+            onResetBrandProfile={handleResetBrandProfile}
           />
         )}
 
