@@ -89,10 +89,11 @@ export function resolveOfficialLogoPath(): string | null {
 
   const candidatePaths = [
     path.resolve(process.cwd(), 'server/assets/ktdt-logo.png'),
+    path.resolve(process.cwd(), 'dist/server/assets/ktdt-logo.png'),
     path.resolve(__dirnameSafe, '../server/assets/ktdt-logo.png'),
     path.resolve(__dirnameSafe, 'server/assets/ktdt-logo.png'),
     path.resolve(__dirnameSafe, 'assets/ktdt-logo.png'),
-    path.resolve(process.cwd(), 'dist/server/assets/ktdt-logo.png'),
+    path.resolve(__dirnameSafe, '../dist/server/assets/ktdt-logo.png'),
   ];
 
   for (const candidate of candidatePaths) {

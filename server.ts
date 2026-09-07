@@ -50,7 +50,7 @@ const __dirnameResolved =
   typeof __dirname !== 'undefined' ? __dirname : path.dirname(__filenameResolved);
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const distPath = path.join(process.cwd(), 'dist');
 const distIndexPath = path.join(distPath, 'index.html');
 const hasBuiltFrontend = fs.existsSync(distIndexPath);
@@ -1580,7 +1580,12 @@ app.post('/api/generate-mock-image', async (req, res) => {
 
 // Start Express Server with Vite middleware
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    Boolean(process.env.K_SERVICE) ||
+    Boolean(__filenameResolved && __filenameResolved.includes('dist'));
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -1593,14 +1598,28 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     const logoPath = resolveOfficialLogoPath();
     if (logoPath) {
       console.log(`[Startup] Official brand logo active at: ${logoPath}`);
     } else {
       console.warn('[Startup] Warning: Official brand logo not found in candidate paths.');
     }
-    console.log(`KTDT AI Image Rebuilder server running at http://localhost:${PORT}`);
+    console.log(`KTDT AI Image Rebuilder server running at http://0.0.0.0:${PORT}`);
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      const fallbackPort = Number(process.env.DEFAULT_APP_PORT) || 3000;
+      if (PORT !== fallbackPort) {
+        console.warn(`[Startup] Port ${PORT} is in use (ingress proxy or port collision). Falling back to port ${fallbackPort}...`);
+        app.listen(fallbackPort, '0.0.0.0', () => {
+          console.log(`KTDT AI Image Rebuilder server running at http://0.0.0.0:${fallbackPort}`);
+        });
+        return;
+      }
+    }
+    throw err;
   });
 }
 

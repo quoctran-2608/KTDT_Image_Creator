@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "PORT=3000 tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && node -e \"const fs=require('fs'); if (fs.existsSync('server/assets')) { fs.mkdirSync('dist/server/assets', {recursive: true}); fs.cpSync('server/assets', 'dist/server/assets', {recursive: true}); }\"",
-    "start": "node dist/server.cjs",
+    "start": "NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
