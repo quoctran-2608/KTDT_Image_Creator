@@ -22,6 +22,10 @@ import {
 import { ImageManifest, ImageSlotPlan } from '../types';
 import { downloadSingleFile, downloadZipPackage, validateHandoffPackage } from '../utils/zipExporter';
 import { normalizeBasePath } from '../utils/htmlProcessor';
+import {
+  buildEditorialImagePack,
+  validateEditorialImagePackExport,
+} from '../utils/editorialImagePack';
 
 interface OutputArtifactsProps {
   updatedHtml: string;
@@ -43,10 +47,18 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
   const [copiedType, setCopiedType] = useState<'html' | 'json' | null>(null);
   const [isZipping, setIsZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
+  const [isPreparingEditorial, setIsPreparingEditorial] = useState(false);
+  const [editorialError, setEditorialError] = useState<string | null>(null);
+  const [editorialSuccess, setEditorialSuccess] = useState<string | null>(null);
+  const [editorialFallbackJson, setEditorialFallbackJson] = useState<string | null>(null);
 
   const cleanPath = normalizeBasePath(outputBasePath);
 
   const validation = validateHandoffPackage(plan);
+  const editorialValidation = validateEditorialImagePackExport(
+    { title: manifest.article_title, slug: articleSlug || manifest.article_slug },
+    plan
+  );
 
   const completedSlots = plan.filter(
     (s) => s.status === 'completed' && Boolean(s.image_data_url)
@@ -79,6 +91,79 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
       setZipError(err.message || 'Không thể tạo file ZIP. Vui lòng thử lại hoặc tải riêng lẻ.');
     } finally {
       setIsZipping(false);
+    }
+  };
+
+  const handleCopyForEditorial = async () => {
+    setEditorialError(null);
+    setEditorialSuccess(null);
+    setEditorialFallbackJson(null);
+
+    if (!validation.canExport || !editorialValidation.canExport) {
+      setEditorialError([...validation.errors, ...editorialValidation.errors].join(' '));
+      return;
+    }
+
+    try {
+      setIsPreparingEditorial(true);
+      const assets = plan
+        .filter((slot) => slot.selected && slot.status === 'completed' && slot.image_data_url)
+        .map((slot) => ({
+          slot_id: slot.slot_id,
+          filename: slot.final_filename || slot.suggested_filename || `${slot.slot_id}.webp`,
+          image_data_url: slot.image_data_url,
+        }));
+
+      const response = await fetch('/api/editorial-export-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assets }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success || !Array.isArray(result.assets)) {
+        throw new Error(result.error || 'Không thể tạo URL ảnh tạm cho Editorial.');
+      }
+
+      const imageUrlsBySlotId: Record<string, string> = {};
+      for (const asset of result.assets) {
+        if (typeof asset.slot_id !== 'string' || typeof asset.path !== 'string') {
+          throw new Error('Máy chủ trả về URL ảnh Editorial không hợp lệ.');
+        }
+        imageUrlsBySlotId[asset.slot_id] = new URL(asset.path, window.location.origin).href;
+      }
+
+      const pack = buildEditorialImagePack(
+        { title: manifest.article_title, slug: articleSlug || manifest.article_slug },
+        plan,
+        imageUrlsBySlotId
+      );
+      const packJson = JSON.stringify(pack, null, 2);
+
+      try {
+        await navigator.clipboard.writeText(packJson);
+        setEditorialSuccess('Đã sao chép gói ảnh cho Editorial.');
+      } catch {
+        setEditorialFallbackJson(packJson);
+        setEditorialError(
+          'Trình duyệt không cho phép sao chép tự động. Hãy sao chép JSON bên dưới rồi dán vào Editorial.'
+        );
+      }
+    } catch (err: any) {
+      setEditorialError(err.message || 'Không thể chuẩn bị gói ảnh cho Editorial.');
+    } finally {
+      setIsPreparingEditorial(false);
+    }
+  };
+
+  const handleRetryEditorialCopy = async () => {
+    if (!editorialFallbackJson) return;
+    try {
+      await navigator.clipboard.writeText(editorialFallbackJson);
+      setEditorialSuccess('Đã sao chép gói ảnh cho Editorial.');
+      setEditorialError(null);
+      setEditorialFallbackJson(null);
+    } catch {
+      setEditorialError('Vẫn không thể sao chép tự động. Hãy chọn toàn bộ JSON và sao chép thủ công.');
     }
   };
 
@@ -134,8 +219,31 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
           </div>
         </div>
 
-        {/* Dominant Primary CTA: Tải gói bàn giao (.ZIP) */}
+        {/* Editorial copy is the primary transport; existing ZIP remains available as a secondary handoff. */}
         <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCopyForEditorial}
+            disabled={isPreparingEditorial || !validation.canExport || !editorialValidation.canExport}
+            className={`h-12 px-7 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+              !validation.canExport || !editorialValidation.canExport
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-[#0F766E] hover:bg-[#115E59] active:scale-[0.99] text-white shadow-teal-900/10'
+            }`}
+          >
+            {isPreparingEditorial ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Đang chuẩn bị URL ảnh...</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4" />
+                <span>COPY CHO EDITORIAL</span>
+              </>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={handleDownloadZip}
@@ -181,9 +289,67 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
         </div>
       )}
 
+      {validation.canExport && !editorialValidation.canExport && (
+        <div className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <div className="leading-relaxed space-y-1">
+            <strong className="font-bold text-amber-950 block">
+              Chưa đủ điều kiện sao chép cho Editorial:
+            </strong>
+            <ul className="list-disc list-inside space-y-0.5 text-amber-900">
+              {editorialValidation.errors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {zipError && (
         <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
           {zipError}
+        </div>
+      )}
+
+      <p className="mt-3 text-xs text-slate-500">
+        Sao chép toàn bộ ảnh và metadata để dán vào Editorial.
+      </p>
+
+      {editorialSuccess && (
+        <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          {editorialSuccess}
+        </div>
+      )}
+
+      {editorialError && (
+        <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+          {editorialError}
+        </div>
+      )}
+
+      {editorialFallbackJson && (
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-700">
+              Gói JSON để sao chép thủ công
+            </span>
+            <button
+              type="button"
+              onClick={handleRetryEditorialCopy}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1 cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Sao chép lại</span>
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={editorialFallbackJson}
+            onFocus={(event) => event.currentTarget.select()}
+            className="w-full min-h-44 p-3 font-mono text-[11px] text-slate-100 bg-slate-950 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
+            aria-label="Gói JSON Editorial để sao chép thủ công"
+          />
         </div>
       )}
 

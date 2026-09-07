@@ -2,9 +2,11 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import sharp from 'sharp';
 import {
   parseArticleHtml,
   cleanEditorialAltText,
@@ -100,6 +102,31 @@ const generatedArtifactsCache = new Map<
   }
 >();
 
+const EDITORIAL_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
+const editorialExportAssets = new Map<
+  string,
+  {
+    filename: string;
+    mime: 'image/webp';
+    buffer: Buffer;
+    createdAt: number;
+  }
+>();
+
+function cleanupEditorialExportAssets(now = Date.now()) {
+  for (const [token, asset] of editorialExportAssets) {
+    if (now - asset.createdAt > EDITORIAL_EXPORT_TTL_MS) {
+      editorialExportAssets.delete(token);
+    }
+  }
+}
+
+function safeEditorialFilename(filename: unknown): string {
+  const raw = typeof filename === 'string' ? filename : 'editorial-image.webp';
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-');
+  return cleaned.toLowerCase().endsWith('.webp') ? cleaned : `${cleaned || 'editorial-image'}.webp`;
+}
+
 function getVertexCredentialInfo(): { detected: boolean; source: string } {
   if (process.env.VERTEX_SERVICE_ACCOUNT_JSON) {
     return { detected: true, source: 'Service Account JSON (Biến môi trường)' };
@@ -159,6 +186,82 @@ app.get('/api/health', (req, res) => {
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
     time: new Date().toISOString(),
   });
+});
+
+/**
+ * Registers completed browser assets for one-way Editorial import.
+ * Tokens are opaque, in-memory, and intentionally short-lived transport handles.
+ */
+app.post('/api/editorial-export-assets', async (req, res) => {
+  try {
+    cleanupEditorialExportAssets();
+    const assets = req.body?.assets;
+    if (!Array.isArray(assets) || assets.length === 0) {
+      return res.status(400).json({ error: 'Cần ít nhất một asset hoàn tất để xuất sang Editorial.' });
+    }
+    if (assets.length > 100) {
+      return res.status(400).json({ error: 'Số lượng asset xuất vượt giới hạn cho phép.' });
+    }
+
+    const seenSlots = new Set<string>();
+    const registered: Array<{ slot_id: string; path: string }> = [];
+    for (const asset of assets) {
+      const slotId = typeof asset?.slot_id === 'string' ? asset.slot_id.trim() : '';
+      const dataUrl = typeof asset?.image_data_url === 'string' ? asset.image_data_url : '';
+      if (!slotId || !dataUrl.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Asset Editorial không hợp lệ hoặc thiếu ảnh hoàn tất.' });
+      }
+      if (seenSlots.has(slotId)) {
+        return res.status(400).json({ error: `Asset Editorial bị trùng slot_id: ${slotId}.` });
+      }
+      seenSlots.add(slotId);
+
+      const sourceBuffer = bufferFromDataUrl(dataUrl);
+      if (sourceBuffer.length === 0 || sourceBuffer.length > 20 * 1024 * 1024) {
+        return res.status(400).json({ error: `Kích thước asset không hợp lệ: ${slotId}.` });
+      }
+
+      // Normalize all client/server image data URLs, including client mock SVGs, to a downloadable WebP.
+      const webpBuffer = await sharp(sourceBuffer).webp({ quality: 92, effort: 4 }).toBuffer();
+      const token = randomUUID();
+      editorialExportAssets.set(token, {
+        filename: safeEditorialFilename(asset.filename),
+        mime: 'image/webp',
+        buffer: webpBuffer,
+        createdAt: Date.now(),
+      });
+      registered.push({ slot_id: slotId, path: `/api/editorial-image/${token}` });
+    }
+
+    return res.json({ success: true, assets: registered });
+  } catch (err: any) {
+    console.error('Editorial export asset registration failed:', err);
+    return res.status(400).json({
+      error: 'Không thể chuẩn bị URL ảnh tạm cho Editorial.',
+      details: err.message || String(err),
+    });
+  }
+});
+
+/**
+ * Serves only previously registered opaque-token assets; no filesystem paths or browser session needed.
+ */
+app.get('/api/editorial-image/:token', (req, res) => {
+  cleanupEditorialExportAssets();
+  const token = req.params.token;
+  if (!/^[0-9a-f-]{36}$/i.test(token)) {
+    return res.status(404).send('Không tìm thấy ảnh tạm.');
+  }
+  const asset = editorialExportAssets.get(token);
+  if (!asset) {
+    return res.status(404).send('Ảnh tạm đã hết hạn hoặc không tồn tại.');
+  }
+
+  res.setHeader('Content-Type', asset.mime);
+  res.setHeader('Content-Length', asset.buffer.length);
+  res.setHeader('Content-Disposition', `inline; filename="${asset.filename}"`);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.send(asset.buffer);
 });
 
 // Vertex AI status query endpoint
