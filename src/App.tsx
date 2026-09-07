@@ -136,8 +136,9 @@ export default function App() {
 
   // State & handlers for starting a clean new article session
   const [showNewArticleConfirm, setShowNewArticleConfirm] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  const isBusy = isAnalyzing || isGenerating;
+  const isBusy = isAnalyzing || isGenerating || isExporting;
   const hasActiveArticleData = Boolean(
     htmlSource.trim() ||
     articleUrl.trim() ||
@@ -149,7 +150,7 @@ export default function App() {
   const handleRequestNewArticle = () => {
     if (isBusy) {
       alert(
-        'Hệ thống đang tiến hành phân tích hoặc tạo ảnh. Vui lòng đợi tác vụ hoàn tất trước khi bắt đầu bài viết mới.'
+        'Hệ thống đang tiến hành phân tích, tạo ảnh hoặc xuất dữ liệu. Vui lòng đợi tác vụ hoàn tất trước khi bắt đầu bài viết mới.'
       );
       return;
     }
@@ -162,6 +163,7 @@ export default function App() {
   };
 
   const handleConfirmNewArticle = () => {
+    if (isBusy) return;
     setHtmlSource('');
     setArticleUrl('');
     setBaseUrl('');
@@ -171,6 +173,7 @@ export default function App() {
     setPreviewModal(null);
     setShowDiscoveryModal(false);
     setShowNewArticleConfirm(false);
+    setIsExporting(false);
     setCurrentStep(1);
   };
 
@@ -883,6 +886,7 @@ export default function App() {
             }}
             onOpenDiscoveryModal={() => setShowDiscoveryModal(true)}
             onNewArticle={handleRequestNewArticle}
+            isBusy={isBusy}
           />
         )}
 
@@ -926,6 +930,7 @@ export default function App() {
                 articleSlug={analysis.slug}
                 plan={plan}
                 outputBasePath={outputBasePath}
+                onBusyChange={setIsExporting}
               />
             )}
 
@@ -945,8 +950,12 @@ export default function App() {
                 id="step3-new-article-btn"
                 onClick={handleRequestNewArticle}
                 disabled={isBusy}
-                className="h-10 px-4 rounded-xl border border-teal-600 bg-teal-50 hover:bg-teal-100 text-[#0F766E] text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs"
-                title="Bắt đầu phiên làm việc mới với bài viết khác"
+                className={`h-10 px-4 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
+                  isBusy
+                    ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                    : 'border-teal-600 bg-teal-50 hover:bg-teal-100 text-[#0F766E]'
+                }`}
+                title={isBusy ? 'Hệ thống đang xử lý tác vụ...' : 'Bắt đầu phiên làm việc mới với bài viết khác'}
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>Bắt đầu với bài viết mới</span>
@@ -1000,7 +1009,12 @@ export default function App() {
                 type="button"
                 id="confirm-new-article-btn"
                 onClick={handleConfirmNewArticle}
-                className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                disabled={isBusy}
+                className={`h-10 px-5 rounded-xl text-white text-xs font-bold transition-colors cursor-pointer shadow-xs ${
+                  isBusy
+                    ? 'opacity-50 cursor-not-allowed bg-slate-400'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
               >
                 Xác nhận &amp; Bắt đầu bài mới
               </button>

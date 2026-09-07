@@ -35,6 +35,7 @@ interface HtmlInputSectionProps {
   onResetAnalysis?: () => void;
   onOpenDiscoveryModal?: () => void;
   onNewArticle?: () => void;
+  isBusy?: boolean;
 }
 
 export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
@@ -54,6 +55,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
   onResetAnalysis,
   onOpenDiscoveryModal,
   onNewArticle,
+  isBusy = false,
 }) => {
   const [showSampleMenu, setShowSampleMenu] = useState(false);
   const [isViewingSource, setIsViewingSource] = useState(false);
@@ -192,8 +194,13 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
                 type="button"
                 id="analyzed-card-new-article-btn"
                 onClick={onNewArticle}
-                className="h-10 px-3.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Xóa dữ liệu để bắt đầu bài viết mới hoàn toàn"
+                disabled={isBusy}
+                className={`h-10 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  isBusy
+                    ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                }`}
+                title={isBusy ? 'Hệ thống đang xử lý tác vụ...' : 'Xóa dữ liệu để bắt đầu bài viết mới hoàn toàn'}
               >
                 <PlusCircle className="w-3.5 h-3.5 text-[#0F766E]" />
                 <span>Bài viết mới</span>

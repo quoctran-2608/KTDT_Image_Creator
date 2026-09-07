@@ -33,6 +33,7 @@ interface OutputArtifactsProps {
   articleSlug: string;
   plan: ImageSlotPlan[];
   outputBasePath: string;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
@@ -41,6 +42,7 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
   articleSlug,
   plan,
   outputBasePath,
+  onBusyChange,
 }) => {
   const [showTechnicalOptions, setShowTechnicalOptions] = useState(false);
   const [activeTab, setActiveTab] = useState<'html' | 'manifest' | 'files' | 'preview'>('html');
@@ -52,6 +54,16 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
   const [editorialSuccess, setEditorialSuccess] = useState<string | null>(null);
   const [editorialTransport, setEditorialTransport] = useState<'gcs' | 'memory' | null>(null);
   const [editorialFallbackJson, setEditorialFallbackJson] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const busy = isPreparingEditorial || isZipping;
+    onBusyChange?.(busy);
+    return () => {
+      if (busy) {
+        onBusyChange?.(false);
+      }
+    };
+  }, [isPreparingEditorial, isZipping, onBusyChange]);
 
   const cleanPath = normalizeBasePath(outputBasePath);
 
