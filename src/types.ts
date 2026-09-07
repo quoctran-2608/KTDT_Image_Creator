@@ -129,6 +129,11 @@ export interface ImageSlotPlan {
   selected: boolean; // Must produce a new asset
   status: SlotStatus;
   variationAttempt?: number;
+  cover_caption?: string; // Vietnamese text to render on cover
+  cover_text_validation?: 'pending' | 'success' | 'failed';
+  cover_text_detected?: string;
+  cover_text_expected?: string;
+  cover_text_attempts?: number;
   image_data_url?: string; // base64 or object url
   prompt_summary?: string;
   error_message?: string;

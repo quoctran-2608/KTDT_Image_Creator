@@ -251,6 +251,21 @@ export const ResultGallery: React.FC<ResultGalleryProps> = ({
                             <span className="text-slate-400 font-medium">Ý tưởng:</span> {slot.prompt_summary}
                           </div>
                         )}
+                        {slot.cover_text_validation === 'failed' && (
+                          <div className="mt-2 p-2 rounded border border-rose-200 bg-rose-50 text-rose-800 text-[11px] leading-relaxed">
+                            <strong className="block mb-0.5 text-rose-900">⚠ AI chưa render chính xác dòng chữ ảnh bìa.</strong>
+                            AI đã thử {slot.cover_text_attempts} lần nhưng nội dung chữ vẫn chưa hoàn hảo.<br/>
+                            <strong>Yêu cầu:</strong> "{slot.cover_text_expected}"<br/>
+                            <strong>Đọc được:</strong> "{slot.cover_text_detected}"<br/>
+                            <em>Gợi ý: Vui lòng "Tạo lại ảnh bìa" hoặc sửa lại dòng chữ ngắn gọn hơn.</em>
+                          </div>
+                        )}
+                        {slot.cover_text_validation === 'success' && (
+                          <div className="mt-2 text-emerald-700 text-[11px] font-medium flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Đã chèn chính xác dòng chữ ảnh bìa.
+                          </div>
+                        )}
                       </div>
                     </div>
 

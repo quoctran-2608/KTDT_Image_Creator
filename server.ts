@@ -510,7 +510,7 @@ async function fetchImageAsInlineData(
  */
 app.post('/api/analyze-article', async (req, res) => {
   try {
-    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl } = req.body;
+    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl, articleTitle } = req.body;
     if (!htmlSource || typeof htmlSource !== 'string') {
       return res.status(400).json({ error: 'Nguồn mã HTML không hợp lệ hoặc đang để trống.' });
     }
@@ -523,6 +523,7 @@ app.post('/api/analyze-article', async (req, res) => {
 
     // Step 1: Parse HTML and extract structure & inline images
     const parsed = parseArticleHtml(htmlSource);
+    const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : parsed.title;
     const { title, excerpt, slug, contentSelector, images, featuredImageInfo } = parsed;
 
     // Build default slots from extracted images
@@ -669,7 +670,7 @@ Nhiệm vụ: Phân tích bài viết và xây dựng kế hoạch phân loại,
 1. Bằng chứng ngữ cảnh văn bản (tiêu đề, heading mục, đoạn văn xung quanh, src, alt).
 2. Bằng chứng thị giác thực tế (xem trực tiếp nội dung các bức ảnh đính kèm nếu có).
 
-Tiêu đề bài viết: "${title}"
+Tiêu đề bài viết: "${effectiveArticleTitle}"
 Tóm tắt: "${excerpt || 'Không có'}"
 Slug: "${slug}"
 
@@ -734,6 +735,10 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
      + alt: Văn bản thay thế tự nhiên mô tả nội dung ảnh (VD: "Cửa sổ bảng tính Excel dùng để theo dõi và lập sổ sách kế toán.").
      + title: Tiêu đề ảnh súc tích, 5-8 từ, có dấu (VD: "Lập sổ sách kế toán trên Excel").
      + caption: Chú thích ảnh giải thích ý nghĩa ngữ cảnh trong bài viết (VD: "Mẫu bảng tính hỗ trợ kế toán theo dõi và tổng hợp sổ sách trên Excel.").
+6. HEADLINE ẢNH BÌA (FEATURED COVER CAPTION):
+   - Đề xuất MỘT câu chữ tiếng Việt (5-10 từ) dựa trên Tiêu đề bài viết và Tóm tắt, để in trực tiếp lên ảnh Featured.
+   - Yêu cầu: rõ, mạnh, dễ đọc, đúng nội dung, không clickbait, không thêm số liệu không căn cứ, không copy nguyên tiêu đề quá dài.
+   - Cung cấp vào thuộc tính featured_cover_caption.
 `;
 
         // Assemble multimodal parts: text prompt + inlineData for each available image
@@ -787,6 +792,7 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
                 featured_alt: { type: Type.STRING },
                 featured_title: { type: Type.STRING },
                 featured_caption: { type: Type.STRING },
+                featured_cover_caption: { type: Type.STRING, description: 'Vietnamese text (5-10 words) to render on the cover image based on the article topic' },
                 inline_updates: {
                   type: Type.ARRAY,
                   items: {
@@ -862,6 +868,9 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
           }
           if (aiResult.featured_caption) {
             slots[0].caption = aiResult.featured_caption;
+          }
+          if (aiResult.featured_cover_caption) {
+            slots[0].cover_caption = aiResult.featured_cover_caption;
           }
 
           // Featured visual analysis status
@@ -1166,6 +1175,51 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
   }
 });
 
+async function validateGeneratedHeadline(
+  ai: GoogleGenAI,
+  imageDataUrl: string,
+  expectedHeadline: string
+): Promise<{ success: boolean; detectedText: string }> {
+  try {
+    const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);
+    if (!match) return { success: false, detectedText: '' };
+    const mimeType = match[1];
+    const data = match[2];
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data } },
+            { text: 'Read ONLY the prominent headline text visible in this image.\nReturn only the text you can read. Do not explain. If there is no text, return "NONE".' },
+          ],
+        },
+      ],
+    });
+    
+    let detectedText = response.text || '';
+    detectedText = detectedText.replace(/\n/g, ' ').trim();
+    if (detectedText.toUpperCase() === 'NONE') detectedText = '';
+
+    const normalizeStr = (s: string) => {
+       return s.normalize('NFC').replace(/[.,/#!$%^&*;:{}=\-_`~()]/g,"").replace(/\s{2,}/g," ").trim().toLowerCase();
+    };
+
+    const expectedNorm = normalizeStr(expectedHeadline);
+    const detectedNorm = normalizeStr(detectedText);
+
+    return {
+      success: expectedNorm === detectedNorm,
+      detectedText: detectedText
+    };
+  } catch(err) {
+    console.error('Validation error:', err);
+    return { success: false, detectedText: 'ERROR' };
+  }
+}
+
 /**
  * Dedicated server-side image generation function using Vertex AI
  * Builds editorial journalistic prompt, calls Vertex AI Gemini image model, and returns real image data URL
@@ -1174,7 +1228,15 @@ export async function generateImageWithVertex(
   slot: ImageSlotPlan,
   articleTitle: string,
   config: VertexServerConfig
-): Promise<{ success: boolean; imageDataUrl: string; promptSummary: string }> {
+): Promise<{ 
+  success: boolean; 
+  imageDataUrl: string; 
+  promptSummary: string;
+  coverTextValidation?: 'success'|'failed';
+  coverTextDetected?: string;
+  coverTextExpected?: string;
+  coverTextAttempts?: number;
+}> {
   // Determine aspect ratio: Featured 16:9, Inline 4:3 (unless explicitly 1:1)
   const isFeatured =
     slot.type === 'featured' || slot.slot_id === 'feature-1' || slot.slot_id?.startsWith('feature');
@@ -1197,14 +1259,26 @@ export async function generateImageWithVertex(
     ? 'Ảnh ngang tỷ lệ rộng 16:9 (Wide 16:9 landscape aspect ratio), bố cục ảnh bìa báo chí'
     : 'Ảnh ngang tỷ lệ chuẩn 4:3 (Standard 4:3 editorial landscape aspect ratio), minh họa trong bài';
 
+  let textRenderingDirective = '';
+  let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+  
+  if (isFeatured && slot.cover_caption && slot.cover_caption.trim()) {
+    textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
+    negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Do not create any fake corporate logos. Do not create any fake watermarks. Do not create fake stamps or government seals. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
+  } else if (isFeatured) {
+    // If featured but no text is requested
+    negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+  }
+
   const prompt = `Professional editorial journalism photography for a prestigious Vietnamese financial, taxation, and corporate magazine.
 Topic of article: "${articleTitle || 'Kinh tế, Kế toán và Thuế Việt Nam'}".
 ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
 Composition & Aspect Ratio: ${orientation}. Sharp focus on human subjects, realistic documentary editorial style, shot on 50mm f/2.8 lens with shallow depth of field.
 Setting & Atmosphere: Authentic contemporary Vietnamese business office or corporate workspace in Hanoi or Ho Chi Minh City. Natural soft daylight from office windows, minimalist wooden desks, Vietnamese business professionals, modern laptop displaying blurred financial charts.
-Tone: Trustworthy, professional, sophisticated, warm neutral lighting.
-STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.`;
+Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}
+
+${negativeConstraints}`;
 
   // Initialize official Google Gen AI SDK in Vertex AI mode
   const ai = new GoogleGenAI({
@@ -1261,42 +1335,82 @@ STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO word
 
     parts.push({ text: prompt + variationDirective + referenceGuidance });
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [
-        {
-          role: 'user',
-          parts,
-        },
-      ],
-      config: {
-        imageConfig: {
-          aspectRatio: targetRatio as any,
-        },
-      },
-    });
+    let attempts = 0;
+    const maxAttempts = 3;
+    let finalImageDataUrl = '';
+    let coverTextValidation: 'success' | 'failed' | undefined;
+    let coverTextDetected: string | undefined;
 
-    let imageDataUrl = '';
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          imageDataUrl = `data:${mime};base64,${part.inlineData.data}`;
-          break;
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      const currentParts = [...parts];
+      if (attempts > 1 && slot.cover_caption) {
+         currentParts[currentParts.length - 1] = { 
+           text: prompt + variationDirective + referenceGuidance + `\n\nRETRY DIRECTIVE: The previous attempt did not render the exact Vietnamese headline.\nRender EXACTLY:\n"${slot.cover_caption}"\nDo not alter any character or Vietnamese accent mark.`
+         };
+      }
+
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: 'user',
+            parts: currentParts,
+          },
+        ],
+        config: {
+          imageConfig: {
+            aspectRatio: targetRatio as any,
+          },
+        },
+      });
+
+      let imageDataUrl = '';
+      if (response.candidates && response.candidates[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData && part.inlineData.data) {
+            const mime = part.inlineData.mimeType || 'image/png';
+            imageDataUrl = `data:${mime};base64,${part.inlineData.data}`;
+            break;
+          }
         }
       }
-    }
 
-    if (!imageDataUrl) {
-      throw new Error(
-        `Mô hình Vertex AI (${modelName}) phản hồi nhưng không chứa dữ liệu hình ảnh (inlineData rỗng).`
-      );
+      if (!imageDataUrl) {
+        if (attempts >= maxAttempts) {
+          throw new Error(
+            `Mô hình Vertex AI (${modelName}) phản hồi nhưng không chứa dữ liệu hình ảnh (inlineData rỗng) sau ${attempts} lần thử.`
+          );
+        }
+        continue;
+      }
+
+      finalImageDataUrl = imageDataUrl;
+
+      if (isFeatured && slot.cover_caption && slot.cover_caption.trim()) {
+        const valRes = await validateGeneratedHeadline(ai, finalImageDataUrl, slot.cover_caption);
+        coverTextDetected = valRes.detectedText;
+        if (valRes.success) {
+          coverTextValidation = 'success';
+          break; // Validated, exit loop
+        } else {
+          coverTextValidation = 'failed';
+          console.warn(`Validation failed on attempt ${attempts}. Expected: "${slot.cover_caption}", Detected: "${coverTextDetected}"`);
+        }
+      } else {
+        break; // No validation needed
+      }
     }
 
     return {
       success: true,
-      imageDataUrl,
+      imageDataUrl: finalImageDataUrl,
       promptSummary: visualConcept,
+      coverTextValidation,
+      coverTextDetected,
+      coverTextExpected: slot.cover_caption,
+      coverTextAttempts: attempts,
     };
   } catch (err: any) {
     console.error(`Vertex AI generation error with model ${modelName}:`, err);
@@ -1374,6 +1488,10 @@ app.post('/api/generate-image', async (req, res) => {
       mime_type: 'image/webp',
       brand_applied: brandApplied,
       generation_method: 'vertex_ai',
+      cover_text_validation: result.coverTextValidation,
+      cover_text_detected: result.coverTextDetected,
+      cover_text_expected: result.coverTextExpected,
+      cover_text_attempts: result.coverTextAttempts,
       provider: {
         type: 'vertex_ai',
         project_id_configured: Boolean(serverVertexConfig.projectId),

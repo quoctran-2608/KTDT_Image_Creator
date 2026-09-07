@@ -469,6 +469,23 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                     </p>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1">
+                      Dòng chữ ảnh bìa (Cover Caption)
+                    </label>
+                    <input
+                      type="text"
+                      value={featuredSlot.cover_caption || ""}
+                      onChange={(e) =>
+                        onUpdateSlot(actualFeaturedIdx, { cover_caption: e.target.value })
+                      }
+                      placeholder="Dòng chữ sẽ được AI vẽ trực tiếp lên ảnh bìa (để trống nếu không muốn chèn chữ)"
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
+                      Giới hạn 5-10 từ, tiếng Việt, rõ ràng và có dấu.
+                    </p>
+                  </div>
                   {/* Reference Image Control for AI */}
                   <SlotReferenceImageControl
                     slot={featuredSlot}
@@ -852,6 +869,23 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                         </div>
                       )}
 
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1">
+                      Dòng chữ ảnh bìa (Cover Caption)
+                    </label>
+                    <input
+                      type="text"
+                      value={featuredSlot.cover_caption || ""}
+                      onChange={(e) =>
+                        onUpdateSlot(actualFeaturedIdx, { cover_caption: e.target.value })
+                      }
+                      placeholder="Dòng chữ sẽ được AI vẽ trực tiếp lên ảnh bìa (để trống nếu không muốn chèn chữ)"
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
+                      Giới hạn 5-10 từ, tiếng Việt, rõ ràng và có dấu.
+                    </p>
+                  </div>
                       {/* Reference Image Control for AI */}
                       {isAi && (
                         <SlotReferenceImageControl

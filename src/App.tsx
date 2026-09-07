@@ -43,6 +43,7 @@ export default function App() {
   const [htmlSource, setHtmlSource] = useState<string>(SAMPLE_ARTICLES[0].html);
   const [articleUrl, setArticleUrl] = useState<string>(SAMPLE_ARTICLES[0].url || '');
   const [baseUrl, setBaseUrl] = useState<string>('');
+  const [articleTitle, setArticleTitle] = useState<string>('');
   const [showDiscoveryModal, setShowDiscoveryModal] = useState<boolean>(false);
   const [analysis, setAnalysis] = useState<ArticleAnalysis | null>(null);
   const [plan, setPlan] = useState<ImageSlotPlan[]>([]);
@@ -203,7 +204,7 @@ export default function App() {
         const response = await fetch('/api/analyze-article', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ htmlSource, articleUrl, baseUrl }),
+          body: JSON.stringify({ htmlSource, articleUrl, baseUrl, articleTitle }),
         });
 
         const contentType = response.headers.get('content-type') || '';
@@ -488,12 +489,13 @@ export default function App() {
             imageDataUrl = generateClientMockSvg(currentSlot, analysis?.title);
             promptSummary = `Ảnh minh họa mẫu (Demo): ${currentSlot.suggested_concept}`;
           } else {
+            const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : (analysis?.title || 'Bài viết kinh tế thuế');
             const response = await fetch('/api/generate-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 slot: currentSlot,
-                articleTitle: analysis?.title || 'Bài viết kinh tế thuế',
+                articleTitle: effectiveArticleTitle,
                 brandConfig: normalizedBrandProfile,
               }),
             });
@@ -505,6 +507,20 @@ export default function App() {
                 imageDataUrl = resData.imageDataUrl;
                 promptSummary = resData.promptSummary || currentSlot.suggested_concept;
                 brandApplied = resData.brand_applied ?? true;
+                
+                // Save validation results if available
+                setPlan((prev) => {
+                   const next = [...prev];
+                   next[i] = {
+                     ...next[i],
+                     cover_text_validation: resData.cover_text_validation,
+                     cover_text_detected: resData.cover_text_detected,
+                     cover_text_expected: resData.cover_text_expected,
+                     cover_text_attempts: resData.cover_text_attempts
+                   };
+                   return next;
+                });
+
               } else {
                 const errMsg = resData.error || resData.details || 'Không thể tạo ảnh từ Vertex AI.';
                 throw new Error(errMsg);
@@ -644,12 +660,13 @@ export default function App() {
         imageDataUrl = generateClientMockSvg(slotToProcess, analysis?.title);
         promptSummary = `Ảnh minh họa mẫu (Demo): ${slotToProcess.suggested_concept}`;
       } else {
+        const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : (analysis?.title || 'Bài viết kinh tế thuế');
         const response = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             slot: slotToProcess,
-            articleTitle: analysis?.title || 'Bài viết kinh tế thuế',
+            articleTitle: effectiveArticleTitle,
             brandConfig: normalizedBrandProfile,
             regenerate: true,
           }),
@@ -662,6 +679,20 @@ export default function App() {
             imageDataUrl = resData.imageDataUrl;
             promptSummary = resData.promptSummary || currentSlot.suggested_concept;
             brandApplied = resData.brand_applied ?? true;
+            
+            // Save validation results if available
+            setPlan((prev) => {
+               const next = [...prev];
+               next[slotIndex] = {
+                 ...next[slotIndex],
+                 cover_text_validation: resData.cover_text_validation,
+                 cover_text_detected: resData.cover_text_detected,
+                 cover_text_expected: resData.cover_text_expected,
+                 cover_text_attempts: resData.cover_text_attempts
+               };
+               return next;
+            });
+
           } else {
             const errMsg = resData.error || resData.details || 'Tạo lại ảnh với Vertex AI thất bại.';
             throw new Error(errMsg);
@@ -880,6 +911,8 @@ export default function App() {
             setArticleUrl={setArticleUrl}
             baseUrl={baseUrl}
             setBaseUrl={setBaseUrl}
+            articleTitle={articleTitle}
+            setArticleTitle={setArticleTitle}
             onAnalyze={handleAnalyze}
             isAnalyzing={isAnalyzing}
             onClear={() => {

@@ -25,6 +25,8 @@ interface HtmlInputSectionProps {
   setArticleUrl: (url: string) => void;
   baseUrl: string;
   setBaseUrl: (url: string) => void;
+  articleTitle: string;
+  setArticleTitle: (title: string) => void;
   onAnalyze: () => void;
   isAnalyzing: boolean;
   onClear: () => void;
@@ -45,6 +47,8 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
   setArticleUrl,
   baseUrl,
   setBaseUrl,
+  articleTitle,
+  setArticleTitle,
   onAnalyze,
   isAnalyzing,
   onClear,
@@ -266,6 +270,23 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
           className="w-full font-mono text-xs sm:text-[13px] leading-relaxed p-4 bg-slate-900 text-slate-100 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] placeholder:text-slate-500 resize-y shadow-inner"
           spellCheck={false}
         />
+      </div>
+
+      <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+        <div className="mb-2">
+          <label htmlFor="article-title" className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+            Tiêu đề bài viết
+          </label>
+          <p className="text-[11px] text-slate-500 mb-2">Tiêu đề giúp AI hiểu chủ đề chính và đề xuất dòng chữ phù hợp cho ảnh bìa.</p>
+          <input
+            id="article-title"
+            type="text"
+            value={articleTitle}
+            onChange={(e) => setArticleTitle(e.target.value)}
+            placeholder="Ví dụ: Doanh nghiệp lớn lên bằng quản trị, không chỉ bằng doanh thu"
+            className="w-full h-9 px-3 text-xs bg-white text-slate-800 rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-[#0F766E] focus:border-[#0F766E] placeholder:text-slate-400"
+          />
+        </div>
       </div>
 
       {/* Optional: Original Article Website Source Information */}
