@@ -32,8 +32,8 @@ export const SlotReferenceImageControl: React.FC<SlotReferenceImageControlProps>
 
   const sourceThumbnail =
     slot.source_image?.thumbnail_data_url ||
-    slot.image_data_url ||
     slot.source_image?.resolved_url ||
+    slot.source_resolved_url ||
     slot.old_src;
 
   const handleChoiceChange = (choice: ReferenceImageChoice) => {

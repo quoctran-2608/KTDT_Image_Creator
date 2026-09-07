@@ -33,15 +33,15 @@ export const SlotSourceImageControl: React.FC<SlotSourceImageControlProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const srcInfo: SourceImageInfo = slot.source_image || {
-    available: Boolean(slot.image_data_url || slot.old_src),
+    available: Boolean(slot.old_src),
     method: 'html_src',
     resolved_url: slot.old_src || '',
-    thumbnail_data_url: slot.image_data_url,
+    thumbnail_data_url: undefined,
     source_status_label: slot.old_src ? 'URL trong HTML' : 'Chưa có ảnh',
   };
 
   const currentPreviewSrc =
-    srcInfo.thumbnail_data_url || slot.image_data_url || srcInfo.resolved_url || slot.old_src;
+    srcInfo.thumbnail_data_url || srcInfo.resolved_url || slot.old_src;
 
   // Badge label and color determination
   const getBadgeDetails = () => {
@@ -129,7 +129,7 @@ export const SlotSourceImageControl: React.FC<SlotSourceImageControlProps> = ({
         visual_analysis_status: 'not_started',
         visual_analysis_available: false,
         needs_source_confirmation: false,
-        image_data_url: dataUrl,
+
       });
     };
     reader.readAsDataURL(file);
@@ -175,7 +175,7 @@ export const SlotSourceImageControl: React.FC<SlotSourceImageControlProps> = ({
               visual_analysis_status: 'not_started',
               visual_analysis_available: false,
               needs_source_confirmation: false,
-              image_data_url: dataUrl,
+      
             });
           };
           reader.readAsDataURL(blob);

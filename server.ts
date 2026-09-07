@@ -78,7 +78,7 @@ const serverVertexConfig: VertexServerConfig = {
     process.env.GCP_PROJECT_ID ||
     '',
   location: process.env.VERTEX_LOCATION || 'global',
-  model: process.env.VERTEX_MODEL || 'gemini-3.1-flash-image',
+  model: process.env.VERTEX_MODEL || 'gemini-3-pro-image',
 };
 
 // Handle optional server-side service account JSON configuration
@@ -641,29 +641,12 @@ app.post('/api/analyze-article', async (req, res) => {
         });
       }
 
-      // Configure default reference image
-      if (targetSlot.type === 'featured') {
-        targetSlot.reference_image = {
-          enabled: false,
-          choice: 'none',
-          method: 'none',
-        };
-      } else {
-        if (res.source_image.available && res.source_image.thumbnail_data_url) {
-          targetSlot.reference_image = {
-            enabled: true,
-            choice: 'current_source',
-            method: 'current_source',
-            data_url: res.source_image.thumbnail_data_url,
-          };
-        } else {
-          targetSlot.reference_image = {
-            enabled: false,
-            choice: 'none',
-            method: 'none',
-          };
-        }
-      }
+      // Configure default reference image (Disabled by default for all GENERATE_AI slots)
+      targetSlot.reference_image = {
+        enabled: false,
+        choice: 'none',
+        method: 'none',
+      };
     });
 
     // Step 4: If AI analysis is available (Vertex AI via ADC in production or Gemini API key in dev), enhance concepts, alt texts, and classifications
@@ -1230,7 +1213,23 @@ STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO word
     location: config.location,
   });
 
-  const modelName = config.model || 'gemini-3.1-flash-image';
+  const modelName = config.model || 'gemini-3-pro-image';
+
+  let variationDirective = '';
+  if (slot.variationAttempt && slot.variationAttempt > 0) {
+    const directions = [
+      'different camera angle',
+      'different framing',
+      'different subject arrangement',
+      'different Vietnamese office environment',
+      'wider environmental composition',
+      'closer documentary composition',
+      'different lighting direction',
+      'minimalist editorial composition',
+    ];
+    const direction = directions[(slot.variationAttempt - 1) % directions.length];
+    variationDirective = `\nREGENERATION DIRECTIVE: Create a genuinely new visual variation. Do not repeat the previous composition. Focus on: ${direction}.`;
+  }
 
   try {
     const parts: any[] = [];
@@ -1239,7 +1238,7 @@ STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO word
     if (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none') {
       let refDataUrl = slot.reference_image.data_url;
       if (!refDataUrl && slot.reference_image.choice === 'current_source') {
-        refDataUrl = slot.source_image?.thumbnail_data_url || slot.image_data_url;
+        refDataUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
       }
 
       if (refDataUrl && refDataUrl.startsWith('data:')) {
@@ -1260,7 +1259,7 @@ STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO word
         ? '\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.'
         : '';
 
-    parts.push({ text: prompt + referenceGuidance });
+    parts.push({ text: prompt + variationDirective + referenceGuidance });
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -1423,8 +1422,8 @@ app.post('/api/rebuild-source-image', async (req, res) => {
 
     const sourceUrl =
       slot.source_image?.thumbnail_data_url ||
-      slot.image_data_url ||
       slot.source_image?.resolved_url ||
+      slot.source_resolved_url ||
       slot.old_src ||
       slot.original_src ||
       '';

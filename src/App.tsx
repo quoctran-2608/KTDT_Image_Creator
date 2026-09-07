@@ -576,12 +576,24 @@ export default function App() {
     }
 
     const cleanPath = normalizeBasePath(outputBasePath);
+    const nextVariationAttempt = (currentSlot.variationAttempt || 0) + 1;
 
     setPlan((prev) => {
       const next = [...prev];
-      next[slotIndex] = { ...next[slotIndex], status: 'generating', error_message: undefined };
+      next[slotIndex] = {
+        ...next[slotIndex],
+        status: 'generating',
+        error_message: undefined,
+        image_data_url: isRebuild ? next[slotIndex].image_data_url : undefined,
+        variationAttempt: nextVariationAttempt,
+      };
       return next;
     });
+
+    const slotToProcess = {
+      ...currentSlot,
+      variationAttempt: nextVariationAttempt,
+    };
 
     try {
       if (isRebuild) {
@@ -589,7 +601,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            slot: currentSlot,
+            slot: slotToProcess,
             brandConfig: normalizedBrandProfile,
           }),
         });
@@ -625,20 +637,21 @@ export default function App() {
 
       // Otherwise generate via AI
       let imageDataUrl: string | null = null;
-      let promptSummary = currentSlot.suggested_concept;
+      let promptSummary = slotToProcess.suggested_concept;
       let brandApplied = false;
 
       if (useMockMode) {
-        imageDataUrl = generateClientMockSvg(currentSlot, analysis?.title);
-        promptSummary = `Ảnh minh họa mẫu (Demo): ${currentSlot.suggested_concept}`;
+        imageDataUrl = generateClientMockSvg(slotToProcess, analysis?.title);
+        promptSummary = `Ảnh minh họa mẫu (Demo): ${slotToProcess.suggested_concept}`;
       } else {
         const response = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            slot: currentSlot,
+            slot: slotToProcess,
             articleTitle: analysis?.title || 'Bài viết kinh tế thuế',
             brandConfig: normalizedBrandProfile,
+            regenerate: true,
           }),
         });
 

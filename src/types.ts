@@ -128,6 +128,7 @@ export interface ImageSlotPlan {
   aspect_ratio: '16:9' | '4:3' | '1:1';
   selected: boolean; // Must produce a new asset
   status: SlotStatus;
+  variationAttempt?: number;
   image_data_url?: string; // base64 or object url
   prompt_summary?: string;
   error_message?: string;
@@ -267,6 +268,7 @@ export interface ManifestSlotItem {
   source_status_label?: string;
   reference_image_choice?: string;
   reference_image_used?: boolean;
+  variationAttempt?: number;
   visual_description?: string;
   text_visual_conflict?: boolean;
   classification_confidence?: 'high' | 'medium' | 'low';
