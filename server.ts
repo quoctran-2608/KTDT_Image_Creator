@@ -295,18 +295,38 @@ function getVertexReadiness() {
   };
 }
 
-// Lazy initialize Gemini client (for text analysis if needed)
-function getGeminiClient(): GoogleGenAI | null {
+// Lazy initialize client for article analysis: prefers Vertex AI (Cloud Run ADC / service identity) in production, falls back to GEMINI_API_KEY in dev
+function getAnalysisClient(): { ai: GoogleGenAI; model: string } | null {
+  if (serverVertexConfig.projectId && serverVertexConfig.projectId.trim()) {
+    return {
+      ai: new GoogleGenAI({
+        vertexai: true,
+        project: serverVertexConfig.projectId.trim(),
+        location: serverVertexConfig.location || 'global',
+      }),
+      model: 'gemini-2.5-flash',
+    };
+  }
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+  if (apiKey) {
+    return {
+      ai: new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      }),
+      model: 'gemini-2.5-flash',
+    };
+  }
+  return null;
+}
+
+function getGeminiClient(): GoogleGenAI | null {
+  const client = getAnalysisClient();
+  return client?.ai || null;
 }
 
 // Health check endpoint
@@ -316,6 +336,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     vertex: readiness,
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+    analysisReady: Boolean(serverVertexConfig.projectId || process.env.GEMINI_API_KEY),
     time: new Date().toISOString(),
   });
 });
@@ -605,8 +626,9 @@ app.post('/api/analyze-article', async (req, res) => {
       }
     });
 
-    // Step 4: If Gemini is available, enhance concepts, alt texts, and classifications using multimodal visual evidence
-    const ai = getGeminiClient();
+    // Step 4: If AI analysis is available (Vertex AI via ADC in production or Gemini API key in dev), enhance concepts, alt texts, and classifications
+    const analysisClient = getAnalysisClient();
+    const ai = analysisClient?.ai || null;
 
     // Initialize explicit status separation across all slots
     slots.forEach((s) => {
@@ -617,7 +639,7 @@ app.post('/api/analyze-article', async (req, res) => {
         s.processing_strategy === 'NEEDS_DECISION' ? 'needs_decision' : 'recommended';
     });
 
-    if (ai) {
+    if (ai && analysisClient) {
       try {
         const promptText = `Bạn là chuyên gia biên tập hình ảnh cho báo chí kinh tế, thuế, kế toán doanh nghiệp Việt Nam (KTDT).
 Nhiệm vụ: Phân tích bài viết và xây dựng kế hoạch phân loại, xử lý hình ảnh dựa trên CẢ HAI nguồn bằng chứng:
@@ -725,8 +747,13 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
         });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: contentsParts,
+          model: analysisClient.model,
+          contents: [
+            {
+              role: 'user',
+              parts: contentsParts,
+            },
+          ],
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
@@ -1197,9 +1224,12 @@ STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO word
 
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: {
-        parts,
-      },
+      contents: [
+        {
+          role: 'user',
+          parts,
+        },
+      ],
       config: {
         imageConfig: {
           aspectRatio: targetRatio as any,
