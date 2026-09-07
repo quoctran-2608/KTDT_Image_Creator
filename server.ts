@@ -48,7 +48,7 @@ const __dirnameResolved =
   typeof __dirname !== 'undefined' ? __dirname : path.dirname(__filenameResolved);
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Body parser with 50mb limit to handle large HTML sources and base64 images
 app.use(express.json({ limit: '50mb' }));
@@ -106,7 +106,8 @@ const generatedArtifactsCache = new Map<
 const EDITORIAL_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
 const EDITORIAL_EXPORT_BUCKET = process.env.EDITORIAL_EXPORT_BUCKET?.trim() || '';
 const editorialExportStorage = EDITORIAL_EXPORT_BUCKET ? new Storage() : null;
-const isProduction = process.env.NODE_ENV === 'production';
+const isCloudRun = Boolean(process.env.K_SERVICE);
+const isProduction = process.env.NODE_ENV === 'production' || isCloudRun;
 const editorialExportAssets = new Map<
   string,
   {
@@ -1486,7 +1487,7 @@ app.post('/api/generate-mock-image', async (req, res) => {
 
 // Start Express Server with Vite middleware
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
