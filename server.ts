@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import { Storage } from '@google-cloud/storage';
 import sharp from 'sharp';
 import {
   parseArticleHtml,
@@ -103,6 +104,9 @@ const generatedArtifactsCache = new Map<
 >();
 
 const EDITORIAL_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
+const EDITORIAL_EXPORT_BUCKET = process.env.EDITORIAL_EXPORT_BUCKET?.trim() || '';
+const editorialExportStorage = EDITORIAL_EXPORT_BUCKET ? new Storage() : null;
+const isProduction = process.env.NODE_ENV === 'production';
 const editorialExportAssets = new Map<
   string,
   {
@@ -125,6 +129,126 @@ function safeEditorialFilename(filename: unknown): string {
   const raw = typeof filename === 'string' ? filename : 'editorial-image.webp';
   const cleaned = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-');
   return cleaned.toLowerCase().endsWith('.webp') ? cleaned : `${cleaned || 'editorial-image'}.webp`;
+}
+
+interface EditorialExportAssetInput {
+  slot_id: string;
+  filename: string;
+  image_data_url: string;
+}
+
+interface NormalizedEditorialExportAsset {
+  slotId: string;
+  filename: string;
+  webpBuffer: Buffer;
+}
+
+async function normalizeEditorialExportAssets(
+  assets: unknown
+): Promise<NormalizedEditorialExportAsset[]> {
+  if (!Array.isArray(assets) || assets.length === 0) {
+    throw new Error('Cần ít nhất một asset hoàn tất để xuất sang Editorial.');
+  }
+  if (assets.length > 100) {
+    throw new Error('Số lượng asset xuất vượt giới hạn cho phép.');
+  }
+
+  const seenSlots = new Set<string>();
+  const normalized: NormalizedEditorialExportAsset[] = [];
+  for (const asset of assets as Partial<EditorialExportAssetInput>[]) {
+    const slotId = typeof asset.slot_id === 'string' ? asset.slot_id.trim() : '';
+    const dataUrl = typeof asset.image_data_url === 'string' ? asset.image_data_url : '';
+    if (!slotId || !dataUrl.startsWith('data:image/')) {
+      throw new Error('Asset Editorial không hợp lệ hoặc thiếu ảnh hoàn tất.');
+    }
+    if (seenSlots.has(slotId)) {
+      throw new Error(`Asset Editorial bị trùng slot_id: ${slotId}.`);
+    }
+    seenSlots.add(slotId);
+
+    const sourceBuffer = bufferFromDataUrl(dataUrl);
+    if (sourceBuffer.length === 0 || sourceBuffer.length > 20 * 1024 * 1024) {
+      throw new Error(`Kích thước asset không hợp lệ: ${slotId}.`);
+    }
+
+    // Normalize client mocks and server outputs into the same downloadable WebP transport format.
+    const webpBuffer = await sharp(sourceBuffer).webp({ quality: 92, effort: 4 }).toBuffer();
+    normalized.push({
+      slotId,
+      filename: safeEditorialFilename(asset.filename),
+      webpBuffer,
+    });
+  }
+  return normalized;
+}
+
+async function registerEditorialAssetsInCloudStorage(
+  assets: NormalizedEditorialExportAsset[]
+): Promise<Array<{ slot_id: string; url: string }>> {
+  if (!editorialExportStorage || !EDITORIAL_EXPORT_BUCKET) {
+    throw new Error('Cloud Storage chưa được cấu hình cho Editorial export.');
+  }
+
+  const bucket = editorialExportStorage.bucket(EDITORIAL_EXPORT_BUCKET);
+  const exportId = randomUUID();
+  const uploadedFiles: ReturnType<typeof bucket.file>[] = [];
+  try {
+    const storedAssets: Array<{ slot_id: string; file: ReturnType<typeof bucket.file> }> = [];
+    for (const asset of assets) {
+      // A per-object opaque prefix prevents filename collisions inside the export request.
+      const objectPath = `editorial-export/${exportId}/${randomUUID()}-${asset.filename}`;
+      const file = bucket.file(objectPath);
+      // Track before upload so rollback also covers a partial object from a failed save.
+      uploadedFiles.push(file);
+      await file.save(asset.webpBuffer, {
+        resumable: false,
+        contentType: 'image/webp',
+        metadata: { cacheControl: 'private, max-age=300' },
+      });
+      storedAssets.push({ slot_id: asset.slotId, file });
+    }
+
+    return await Promise.all(
+      storedAssets.map(async ({ slot_id, file }) => {
+        const [url] = await file.getSignedUrl({
+          version: 'v4',
+          action: 'read',
+          expires: Date.now() + EDITORIAL_EXPORT_TTL_MS,
+        });
+        return { slot_id, url };
+      })
+    );
+  } catch (err) {
+    // Best-effort rollback makes a failed pack registration all-or-nothing for callers.
+    await Promise.allSettled(uploadedFiles.map((file) => file.delete({ ignoreNotFound: true })));
+    throw err;
+  }
+}
+
+function registerEditorialAssetsInMemory(
+  assets: NormalizedEditorialExportAsset[]
+): Array<{ slot_id: string; path: string }> {
+  cleanupEditorialExportAssets();
+  const pending = assets.map((asset) => ({
+    token: randomUUID(),
+    slot_id: asset.slotId,
+    filename: asset.filename,
+    buffer: asset.webpBuffer,
+  }));
+
+  // Store only after all asset normalization has succeeded, so no partial memory pack is visible.
+  for (const asset of pending) {
+    editorialExportAssets.set(asset.token, {
+      filename: asset.filename,
+      mime: 'image/webp',
+      buffer: asset.buffer,
+      createdAt: Date.now(),
+    });
+  }
+  return pending.map(({ token, slot_id }) => ({
+    slot_id,
+    path: `/api/editorial-image/${token}`,
+  }));
 }
 
 function getVertexCredentialInfo(): { detected: boolean; source: string } {
@@ -190,52 +314,26 @@ app.get('/api/health', (req, res) => {
 
 /**
  * Registers completed browser assets for one-way Editorial import.
- * Tokens are opaque, in-memory, and intentionally short-lived transport handles.
+ * Cloud Storage is required in production so URLs survive Cloud Run instance changes.
  */
 app.post('/api/editorial-export-assets', async (req, res) => {
   try {
-    cleanupEditorialExportAssets();
-    const assets = req.body?.assets;
-    if (!Array.isArray(assets) || assets.length === 0) {
-      return res.status(400).json({ error: 'Cần ít nhất một asset hoàn tất để xuất sang Editorial.' });
+    const assets = await normalizeEditorialExportAssets(req.body?.assets);
+    if (editorialExportStorage) {
+      const registered = await registerEditorialAssetsInCloudStorage(assets);
+      return res.json({ success: true, transport: 'gcs', assets: registered });
     }
-    if (assets.length > 100) {
-      return res.status(400).json({ error: 'Số lượng asset xuất vượt giới hạn cho phép.' });
-    }
-
-    const seenSlots = new Set<string>();
-    const registered: Array<{ slot_id: string; path: string }> = [];
-    for (const asset of assets) {
-      const slotId = typeof asset?.slot_id === 'string' ? asset.slot_id.trim() : '';
-      const dataUrl = typeof asset?.image_data_url === 'string' ? asset.image_data_url : '';
-      if (!slotId || !dataUrl.startsWith('data:image/')) {
-        return res.status(400).json({ error: 'Asset Editorial không hợp lệ hoặc thiếu ảnh hoàn tất.' });
-      }
-      if (seenSlots.has(slotId)) {
-        return res.status(400).json({ error: `Asset Editorial bị trùng slot_id: ${slotId}.` });
-      }
-      seenSlots.add(slotId);
-
-      const sourceBuffer = bufferFromDataUrl(dataUrl);
-      if (sourceBuffer.length === 0 || sourceBuffer.length > 20 * 1024 * 1024) {
-        return res.status(400).json({ error: `Kích thước asset không hợp lệ: ${slotId}.` });
-      }
-
-      // Normalize all client/server image data URLs, including client mock SVGs, to a downloadable WebP.
-      const webpBuffer = await sharp(sourceBuffer).webp({ quality: 92, effort: 4 }).toBuffer();
-      const token = randomUUID();
-      editorialExportAssets.set(token, {
-        filename: safeEditorialFilename(asset.filename),
-        mime: 'image/webp',
-        buffer: webpBuffer,
-        createdAt: Date.now(),
+    if (isProduction) {
+      return res.status(503).json({
+        error:
+          'Editorial export chưa sẵn sàng trên production: cần cấu hình EDITORIAL_EXPORT_BUCKET cho Cloud Storage.',
       });
-      registered.push({ slot_id: slotId, path: `/api/editorial-image/${token}` });
     }
 
-    return res.json({ success: true, assets: registered });
+    const registered = registerEditorialAssetsInMemory(assets);
+    return res.json({ success: true, transport: 'memory', assets: registered });
   } catch (err: any) {
-    console.error('Editorial export asset registration failed:', err);
+    console.error('Editorial export asset registration failed:', err.message || err);
     return res.status(400).json({
       error: 'Không thể chuẩn bị URL ảnh tạm cho Editorial.',
       details: err.message || String(err),
@@ -244,9 +342,12 @@ app.post('/api/editorial-export-assets', async (req, res) => {
 });
 
 /**
- * Serves only previously registered opaque-token assets; no filesystem paths or browser session needed.
+ * Development-only fallback for temporary in-memory assets. Production uses Cloud Storage signed URLs.
  */
 app.get('/api/editorial-image/:token', (req, res) => {
+  if (editorialExportStorage || isProduction) {
+    return res.status(404).send('Không tìm thấy ảnh tạm.');
+  }
   cleanupEditorialExportAssets();
   const token = req.params.token;
   if (!/^[0-9a-f-]{36}$/i.test(token)) {

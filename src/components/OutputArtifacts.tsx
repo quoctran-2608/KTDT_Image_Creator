@@ -50,6 +50,7 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
   const [isPreparingEditorial, setIsPreparingEditorial] = useState(false);
   const [editorialError, setEditorialError] = useState<string | null>(null);
   const [editorialSuccess, setEditorialSuccess] = useState<string | null>(null);
+  const [editorialTransport, setEditorialTransport] = useState<'gcs' | 'memory' | null>(null);
   const [editorialFallbackJson, setEditorialFallbackJson] = useState<string | null>(null);
 
   const cleanPath = normalizeBasePath(outputBasePath);
@@ -97,6 +98,7 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
   const handleCopyForEditorial = async () => {
     setEditorialError(null);
     setEditorialSuccess(null);
+    setEditorialTransport(null);
     setEditorialFallbackJson(null);
 
     if (!validation.canExport || !editorialValidation.canExport) {
@@ -126,10 +128,19 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
 
       const imageUrlsBySlotId: Record<string, string> = {};
       for (const asset of result.assets) {
-        if (typeof asset.slot_id !== 'string' || typeof asset.path !== 'string') {
+        if (typeof asset.slot_id !== 'string') {
           throw new Error('Máy chủ trả về URL ảnh Editorial không hợp lệ.');
         }
-        imageUrlsBySlotId[asset.slot_id] = new URL(asset.path, window.location.origin).href;
+        const url =
+          typeof asset.url === 'string'
+            ? asset.url
+            : typeof asset.path === 'string'
+            ? new URL(asset.path, window.location.origin).href
+            : '';
+        if (!/^https?:\/\//i.test(url)) {
+          throw new Error('Máy chủ trả về URL ảnh Editorial không hợp lệ.');
+        }
+        imageUrlsBySlotId[asset.slot_id] = url;
       }
 
       const pack = buildEditorialImagePack(
@@ -141,8 +152,10 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
 
       try {
         await navigator.clipboard.writeText(packJson);
+        setEditorialTransport(result.transport === 'gcs' ? 'gcs' : 'memory');
         setEditorialSuccess('Đã sao chép gói ảnh cho Editorial.');
       } catch {
+        setEditorialTransport(result.transport === 'gcs' ? 'gcs' : 'memory');
         setEditorialFallbackJson(packJson);
         setEditorialError(
           'Trình duyệt không cho phép sao chép tự động. Hãy sao chép JSON bên dưới rồi dán vào Editorial.'
@@ -316,9 +329,16 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
       </p>
 
       {editorialSuccess && (
-        <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          {editorialSuccess}
+        <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <div>{editorialSuccess}</div>
+            {editorialTransport === 'memory' && (
+              <div className="mt-1 text-[11px] text-amber-800">
+                Đang dùng memory transport cho môi trường development/preview; URL sẽ mất khi server restart.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
