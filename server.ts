@@ -511,7 +511,7 @@ async function fetchImageAsInlineData(
  */
 app.post('/api/analyze-article', async (req, res) => {
   try {
-    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl } = req.body;
+    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl, articleTitle } = req.body;
     if (!htmlSource || typeof htmlSource !== 'string') {
       return res.status(400).json({ error: 'Nguồn mã HTML không hợp lệ hoặc đang để trống.' });
     }
@@ -525,6 +525,11 @@ app.post('/api/analyze-article', async (req, res) => {
     // Step 1: Parse HTML and extract structure & inline images
     const parsed = parseArticleHtml(htmlSource);
     const { title, excerpt, slug, contentSelector, images, featuredImageInfo } = parsed;
+
+    const effectiveArticleTitle =
+      typeof articleTitle === 'string' && articleTitle.trim()
+        ? articleTitle.trim()
+        : title || 'Bài viết kinh tế thuế';
 
     // Build default slots from extracted images
     const slots: ImageSlotPlan[] = [];
@@ -540,10 +545,10 @@ app.post('/api/analyze-article', async (req, res) => {
       confidence: 'high',
       visual_analysis_available: false,
       reason: 'Ảnh đại diện chính (Featured Image) đại diện cho toàn bộ chủ đề bài viết.',
-      suggested_concept: `Chuyên viên kế toán doanh nghiệp Việt Nam làm việc tại văn phòng hiện đại, ánh sáng tự nhiên, liên quan chủ đề: "${title}"`,
-      generation_prompt: `High quality editorial journalism photography of a professional Vietnamese corporate accountant working in a modern office in Vietnam, natural office window lighting, shallow depth of field, 50mm f/2.8 lens, related to: "${title}".`,
+      suggested_concept: `Chuyên viên kế toán doanh nghiệp Việt Nam làm việc tại văn phòng hiện đại, ánh sáng tự nhiên, liên quan chủ đề: "${effectiveArticleTitle}"`,
+      generation_prompt: `High quality editorial journalism photography of a professional Vietnamese corporate accountant working in a modern office in Vietnam, natural office window lighting, shallow depth of field, 50mm f/2.8 lens, related to: "${effectiveArticleTitle}".`,
       suggested_filename: generateFeaturedFilename(slug),
-      suggested_alt: `Ảnh minh họa chuyên viên tài chính kế toán rà soát chứng từ liên quan ${title.toLowerCase()}`,
+      suggested_alt: `Ảnh minh họa chuyên viên tài chính kế toán rà soát chứng từ liên quan ${effectiveArticleTitle.toLowerCase()}`,
       aspect_ratio: '16:9',
       selected: true,
       status: 'pending',
@@ -670,7 +675,7 @@ Nhiệm vụ: Phân tích bài viết và xây dựng kế hoạch phân loại,
 1. Bằng chứng ngữ cảnh văn bản (tiêu đề, heading mục, đoạn văn xung quanh, src, alt).
 2. Bằng chứng thị giác thực tế (xem trực tiếp nội dung các bức ảnh đính kèm nếu có).
 
-Tiêu đề bài viết: "${title}"
+Tiêu đề bài viết: "${effectiveArticleTitle}"
 Tóm tắt: "${excerpt || 'Không có'}"
 Slug: "${slug}"
 
