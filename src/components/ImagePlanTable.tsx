@@ -17,6 +17,8 @@ import {
   ShieldCheck,
   Check,
   Settings2,
+  Crown,
+  FileImage,
 } from 'lucide-react';
 import { ArticleAnalysis, BrandProfile, ImageSlotPlan, ProcessingStrategy } from '../types';
 import { normalizeBasePath, cleanEditorialAltText } from '../utils/htmlProcessor';
@@ -359,15 +361,16 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
 
       {/* 1. FEATURED IMAGE CARD (16:9) */}
       {featuredSlot && (
-        <div className="bg-white rounded-2xl border-2 border-teal-600/30 shadow-xs p-5 sm:p-6 overflow-hidden">
+        <div className="bg-gradient-to-br from-teal-50/40 via-white to-teal-50/15 rounded-2xl border-2 border-teal-600/50 shadow-xs p-5 sm:p-6 overflow-hidden">
           {/* Card Top Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-4 mb-4 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-4 mb-4 border-b border-teal-100">
             <div className="flex items-center gap-2.5">
-              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 text-[#0F766E] border border-teal-200 uppercase tracking-wider">
-                Ảnh bìa bài viết
+              <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-[#0F766E] text-white shadow-2xs uppercase tracking-wider flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-300" />
+                <span>FEATURED &bull; ẢNH BÌA BÀI VIẾT</span>
               </span>
-              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600">
-                Tỷ lệ 16:9 (1280 &times; 720)
+              <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                Vị trí: Đầu bài viết &bull; Tỷ lệ 16:9 (1280 &times; 720)
               </span>
             </div>
 
@@ -649,12 +652,22 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm sm:text-base font-bold text-slate-900">
-              Ảnh trong bài
-            </h3>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
-              {inlineSlotsWithIndex.length} vị trí
+            <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
+              <FileImage className="w-3.5 h-3.5 text-slate-600" />
             </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                  Ảnh minh họa trong bài (Ảnh nội dung)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                  {inlineSlotsWithIndex.length} vị trí
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Các hình ảnh minh họa cho các đề mục hoặc đoạn văn trong thân bài viết.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -684,14 +697,12 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                   {/* Card Top Bar */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800">
-                        Ảnh {inlineOrder + 1}
+                      <span className="px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                        Ảnh minh họa #{inlineOrder + 1}
                       </span>
-                      {slot.nearby_heading && (
-                        <span className="text-xs text-slate-500 truncate max-w-md hidden sm:inline" title={slot.nearby_heading}>
-                          &bull; Mục: <strong className="text-slate-700 font-semibold">&ldquo;{slot.nearby_heading}&rdquo;</strong>
-                        </span>
-                      )}
+                      <span className="text-xs text-slate-500 hidden sm:inline">
+                        (Vị trí: Trong thân bài{slot.nearby_heading ? ` &bull; Mục: "${slot.nearby_heading}"` : ''})
+                      </span>
                     </div>
 
                     {/* Status Badges */}

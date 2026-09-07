@@ -13,6 +13,7 @@ import {
   Link2,
   HelpCircle,
   Activity,
+  PlusCircle,
 } from 'lucide-react';
 import { ArticleAnalysis, ImageSlotPlan } from '../types';
 import { SAMPLE_ARTICLES, SampleArticle } from '../utils/sampleArticles';
@@ -33,6 +34,7 @@ interface HtmlInputSectionProps {
   onContinueToStep2?: () => void;
   onResetAnalysis?: () => void;
   onOpenDiscoveryModal?: () => void;
+  onNewArticle?: () => void;
 }
 
 export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
@@ -51,6 +53,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
   onContinueToStep2,
   onResetAnalysis,
   onOpenDiscoveryModal,
+  onNewArticle,
 }) => {
   const [showSampleMenu, setShowSampleMenu] = useState(false);
   const [isViewingSource, setIsViewingSource] = useState(false);
@@ -183,6 +186,19 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
               <Edit3 className="w-3.5 h-3.5 text-slate-500" />
               <span>Thay bài khác</span>
             </button>
+
+            {onNewArticle && (
+              <button
+                type="button"
+                id="analyzed-card-new-article-btn"
+                onClick={onNewArticle}
+                className="h-10 px-3.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Xóa dữ liệu để bắt đầu bài viết mới hoàn toàn"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>Bài viết mới</span>
+              </button>
+            )}
 
             {onContinueToStep2 && (
               <button

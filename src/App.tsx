@@ -35,7 +35,7 @@ import {
   persistBrandProfile,
   toBrandProfileManifest,
 } from './utils/brandProfile';
-import { AlertCircle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Sparkles, PlusCircle, AlertTriangle } from 'lucide-react';
 import { SourceDiscoveryModal } from './components/SourceDiscoveryModal';
 
 export default function App() {
@@ -131,6 +131,46 @@ export default function App() {
     setAnalysis(null);
     setPlan([]);
     setErrorMessage(null);
+    setCurrentStep(1);
+  };
+
+  // State & handlers for starting a clean new article session
+  const [showNewArticleConfirm, setShowNewArticleConfirm] = useState<boolean>(false);
+
+  const isBusy = isAnalyzing || isGenerating;
+  const hasActiveArticleData = Boolean(
+    htmlSource.trim() ||
+    articleUrl.trim() ||
+    baseUrl.trim() ||
+    analysis ||
+    plan.length > 0
+  );
+
+  const handleRequestNewArticle = () => {
+    if (isBusy) {
+      alert(
+        'Hệ thống đang tiến hành phân tích hoặc tạo ảnh. Vui lòng đợi tác vụ hoàn tất trước khi bắt đầu bài viết mới.'
+      );
+      return;
+    }
+
+    if (hasActiveArticleData) {
+      setShowNewArticleConfirm(true);
+    } else {
+      handleConfirmNewArticle();
+    }
+  };
+
+  const handleConfirmNewArticle = () => {
+    setHtmlSource('');
+    setArticleUrl('');
+    setBaseUrl('');
+    setAnalysis(null);
+    setPlan([]);
+    setErrorMessage(null);
+    setPreviewModal(null);
+    setShowDiscoveryModal(false);
+    setShowNewArticleConfirm(false);
     setCurrentStep(1);
   };
 
@@ -784,6 +824,8 @@ export default function App() {
       <Header
         isVertexReady={vertexStatus?.is_ready ?? false}
         onOpenConfigDrawer={() => setShowConfigDrawer(true)}
+        onNewArticle={handleRequestNewArticle}
+        isBusy={isBusy}
       />
 
       {/* Main Workspace (Max width ~1180px) */}
@@ -840,6 +882,7 @@ export default function App() {
               setPlan([]);
             }}
             onOpenDiscoveryModal={() => setShowDiscoveryModal(true)}
+            onNewArticle={handleRequestNewArticle}
           />
         )}
 
@@ -886,8 +929,8 @@ export default function App() {
               />
             )}
 
-            {/* Back to Step 2 action button */}
-            <div className="pt-2 flex justify-start">
+            {/* Bottom action buttons */}
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setCurrentStep(2)}
@@ -895,6 +938,18 @@ export default function App() {
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Quay lại kiểm tra ảnh</span>
+              </button>
+
+              <button
+                type="button"
+                id="step3-new-article-btn"
+                onClick={handleRequestNewArticle}
+                disabled={isBusy}
+                className="h-10 px-4 rounded-xl border border-teal-600 bg-teal-50 hover:bg-teal-100 text-[#0F766E] text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs"
+                title="Bắt đầu phiên làm việc mới với bài viết khác"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Bắt đầu với bài viết mới</span>
               </button>
             </div>
           </div>
@@ -909,6 +964,50 @@ export default function App() {
         onRefresh={fetchVertexStatus}
         onUpdateConfig={handleUpdateVertexConfig}
       />
+
+      {/* Confirmation Modal for Starting New Article */}
+      {showNewArticleConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900 leading-snug">
+                  Bắt đầu với bài viết mới?
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Dữ liệu của bài hiện tại (mã HTML, kế hoạch ảnh, các ảnh đã tạo và bàn giao) sẽ được dọn dẹp để bắt đầu bài mới.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+              <button
+                type="button"
+                id="cancel-new-article-btn"
+                onClick={() => setShowNewArticleConfirm(false)}
+                className="h-10 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                id="confirm-new-article-btn"
+                onClick={handleConfirmNewArticle}
+                className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                Xác nhận &amp; Bắt đầu bài mới
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Image Preview Modal */}
       <ImageModal

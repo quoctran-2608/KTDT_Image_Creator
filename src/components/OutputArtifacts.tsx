@@ -556,6 +556,15 @@ export const OutputArtifacts: React.FC<OutputArtifactsProps> = ({
                               <span className="font-mono font-bold text-slate-900 truncate">
                                 {filename}
                               </span>
+                              {slot.type === 'featured' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#0F766E] text-white shadow-2xs">
+                                  FEATURED &bull; BÌA
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                  MINH HỌA
+                                </span>
+                              )}
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                 isAi ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
                               }`}>
