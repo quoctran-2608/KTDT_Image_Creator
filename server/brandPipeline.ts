@@ -388,12 +388,15 @@ async function applySourceDocumentBranding(
  * Rebuild source image deterministically:
  * Fetches original image or loads buffer, resizes safely, converts to WebP,
  * and adds clean branded footer frame outside content if enabled.
+ * 
+ * Strict fail-safe: Throws error if source image cannot be loaded.
+ * Never creates synthetic SVG, document mock, or replacement graphics.
  */
 export async function rebuildSourceImage(
   sourceUrlOrData: string,
   brandConfig: BrandConfigInput = {},
-  slotInfo: {
-    slot_id: string;
+  slotInfo?: {
+    slot_id?: string;
     suggested_filename?: string;
     title?: string;
     aspect_ratio?: string;
@@ -407,67 +410,43 @@ export async function rebuildSourceImage(
 }> {
   let sourceBuffer: Buffer | null = null;
 
-  if (sourceUrlOrData.startsWith('data:')) {
-    sourceBuffer = bufferFromDataUrl(sourceUrlOrData);
-  } else if (sourceUrlOrData.startsWith('http://') || sourceUrlOrData.startsWith('https://')) {
-    try {
-      const fetched = await safeFetchImageBuffer(sourceUrlOrData, 8000);
-      if (fetched.buffer && fetched.buffer.length > 0) {
-        sourceBuffer = fetched.buffer;
-      }
-    } catch (e) {
-      console.warn(`Could not fetch source image safely from ${sourceUrlOrData}, using crisp vector document reproduction`, e);
-    }
+  const trimmedSource = (sourceUrlOrData || '').trim();
+  if (!trimmedSource) {
+    throw new Error(
+      'Không thể tải ảnh nguồn gốc. REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.'
+    );
   }
 
-  // Fallback: If source image buffer couldn't be loaded (e.g. offline mock or local dummy src),
-  // create high-resolution crisp document vector
+  if (trimmedSource.startsWith('data:')) {
+    try {
+      sourceBuffer = bufferFromDataUrl(trimmedSource);
+    } catch (e: any) {
+      throw new Error(
+        `Không thể tải ảnh nguồn gốc từ dữ liệu data URL: ${e?.message || 'dữ liệu không hợp lệ'}. REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.`
+      );
+    }
+  } else if (trimmedSource.startsWith('http://') || trimmedSource.startsWith('https://')) {
+    try {
+      const fetched = await safeFetchImageBuffer(trimmedSource, 8000);
+      if (fetched?.buffer && fetched.buffer.length > 0) {
+        sourceBuffer = fetched.buffer;
+      }
+    } catch (e: any) {
+      console.warn(`Could not fetch source image safely from ${trimmedSource}:`, e);
+      throw new Error(
+        `Không thể tải ảnh nguồn gốc từ URL (${e?.message || 'kết nối thất bại'}). REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.`
+      );
+    }
+  } else {
+    throw new Error(
+      'Nguồn ảnh không hợp lệ (không phải HTTP/HTTPS hoặc data URL hợp lệ). REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.'
+    );
+  }
+
   if (!sourceBuffer || sourceBuffer.length === 0) {
-    const docW = 1000;
-    const docH = 750;
-    const docTitle = escapeXml(slotInfo.title || 'Biểu mẫu & Chứng từ thuế').slice(0, 60);
-
-    const docSvg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${docW}" height="${docH}" viewBox="0 0 ${docW} ${docH}">
-      <rect width="${docW}" height="${docH}" fill="#f1f5f9" />
-      <g transform="translate(60, 50)">
-        <rect width="${docW - 120}" height="${docH - 100}" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
-        <!-- Document Header Lines -->
-        <rect x="40" y="40" width="200" height="18" rx="4" fill="#0f766e" fill-opacity="0.8" />
-        <rect x="40" y="70" width="320" height="12" rx="3" fill="#94a3b8" />
-        <rect x="40" y="90" width="260" height="10" rx="3" fill="#cbd5e1" />
-        
-        <!-- Document Title Center -->
-        <text x="${(docW - 120) / 2}" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="700" fill="#0f172a">
-          ${docTitle}
-        </text>
-        <!-- Simulated Table Form Lines -->
-        <g transform="translate(40, 220)">
-          <rect width="${docW - 200}" height="36" fill="#f8fafc" stroke="#e2e8f0" />
-          <line x1="120" y1="0" x2="120" y2="36" stroke="#e2e8f0" />
-          <line x1="360" y1="0" x2="360" y2="36" stroke="#e2e8f0" />
-          <line x1="560" y1="0" x2="560" y2="36" stroke="#e2e8f0" />
-
-          <!-- Table Rows -->
-          ${[0, 1, 2, 3, 4].map((i) => `
-            <g transform="translate(0, ${36 + i * 38})">
-              <rect width="${docW - 200}" height="38" fill="${i % 2 === 0 ? '#ffffff' : '#f8fafc'}" stroke="#e2e8f0" />
-              <line x1="120" y1="0" x2="120" y2="38" stroke="#e2e8f0" />
-              <line x1="360" y1="0" x2="360" y2="38" stroke="#e2e8f0" />
-              <line x1="560" y1="0" x2="560" y2="38" stroke="#e2e8f0" />
-              <circle cx="60" cy="19" r="6" fill="#cbd5e1" />
-              <rect x="140" y="14" width="180" height="10" rx="3" fill="#94a3b8" opacity="0.6" />
-              <rect x="380" y="14" width="120" height="10" rx="3" fill="#94a3b8" opacity="0.6" />
-              <rect x="580" y="14" width="80" height="10" rx="3" fill="#0f766e" opacity="0.7" />
-            </g>
-          `).join('')}
-        </g>
-
-      </g>
-    </svg>
-    `.trim();
-
-    sourceBuffer = Buffer.from(docSvg);
+    throw new Error(
+      'Không thể tải ảnh nguồn gốc. REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.'
+    );
   }
 
   // Apply safe source doc branding with Sharp

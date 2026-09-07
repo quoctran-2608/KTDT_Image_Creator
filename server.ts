@@ -256,39 +256,66 @@ function registerEditorialAssetsInMemory(
   }));
 }
 
-function getVertexCredentialInfo(): { detected: boolean; source: string } {
+// Helper to infer credential presence in runtime environment.
+// Note: This only checks environment variables or container environment availability (configuration-only).
+// It does not probe actual IAM permissions or verify aiplatform.googleapis.com API enablement.
+function getVertexCredentialInfo(): {
+  detected: boolean;
+  credentials_environment_available: boolean;
+  source: string;
+  authentication_mode: 'SERVICE_ACCOUNT_JSON' | 'SERVICE_ACCOUNT_FILE' | 'ADC';
+} {
   if (process.env.VERTEX_SERVICE_ACCOUNT_JSON) {
-    return { detected: true, source: 'Service Account JSON (Biến môi trường)' };
+    return {
+      detected: true,
+      credentials_environment_available: true,
+      source: 'Service Account JSON (Biến môi trường)',
+      authentication_mode: 'SERVICE_ACCOUNT_JSON',
+    };
   }
   if (
     process.env.GOOGLE_APPLICATION_CREDENTIALS &&
     fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)
   ) {
-    return { detected: true, source: 'Service Account File (GOOGLE_APPLICATION_CREDENTIALS)' };
+    return {
+      detected: true,
+      credentials_environment_available: true,
+      source: 'Service Account File (GOOGLE_APPLICATION_CREDENTIALS)',
+      authentication_mode: 'SERVICE_ACCOUNT_FILE',
+    };
   }
-  // Cloud Run / GCP container environment provides Application Default Credentials via metadata server
-  return { detected: true, source: 'Application Default Credentials (ADC / Cloud Compute)' };
+  // Cloud Run / GCP container environment provides Application Default Credentials via metadata server / service identity.
+  // This is an environment inference, not an active credential verification probe.
+  return {
+    detected: true,
+    credentials_environment_available: true,
+    source: 'Application Default Credentials (ADC / Cloud Compute - suy luận môi trường)',
+    authentication_mode: 'ADC',
+  };
 }
 
 function getVertexReadiness() {
   const creds = getVertexCredentialInfo();
   const hasProject = Boolean(serverVertexConfig.projectId && serverVertexConfig.projectId.trim());
-  const isReady = hasProject && creds.detected;
+  const isConfigReady = hasProject && creds.credentials_environment_available;
 
   return {
     vertex_enabled: true,
+    configuration_ready: isConfigReady,
+    authentication_mode: creds.authentication_mode,
+    vertex_api_verified: null as boolean | null,
+    verification_scope: 'configuration_only' as const,
     project_id_configured: hasProject,
     project_id: serverVertexConfig.projectId,
     location: serverVertexConfig.location,
     model: serverVertexConfig.model,
     credentials_detected: creds.detected,
+    credentials_environment_available: creds.credentials_environment_available,
     credential_source: creds.source,
-    is_ready: isReady,
+    is_ready: isConfigReady,
     read_only: hasBuiltFrontend,
-    status_message: isReady
-      ? (hasBuiltFrontend
-          ? 'Hệ thống Vertex AI đã sẵn sàng (Server-side ADC).'
-          : 'Hệ thống Vertex AI đã sẵn sàng tạo ảnh.')
+    status_message: isConfigReady
+      ? 'Cấu hình Vertex AI phía server đã sẵn sàng. Quyền IAM và Vertex API thực tế được xác minh khi thực hiện request Vertex.'
       : !hasProject
       ? 'Chưa thể tạo ảnh: cấu hình Vertex AI hoặc thông tin xác thực chưa sẵn sàng (Thiếu Project ID trên server).'
       : 'Chưa thể tạo ảnh: cấu hình Vertex AI hoặc thông tin xác thực chưa sẵn sàng.',
@@ -1388,6 +1415,12 @@ app.post('/api/rebuild-source-image', async (req, res) => {
       slot.old_src ||
       slot.original_src ||
       '';
+    if (!sourceUrl || !sourceUrl.trim()) {
+      return res.status(400).json({
+        error:
+          'Không thể tải ảnh nguồn gốc (thiếu URL hoặc dữ liệu ảnh nguồn). REBUILD_FROM_SOURCE đã dừng để tránh tạo nội dung thay thế không chính xác.',
+      });
+    }
     const result = await rebuildSourceImage(sourceUrl, brandConfig, {
       slot_id: slot.slot_id,
       suggested_filename: slot.suggested_filename,

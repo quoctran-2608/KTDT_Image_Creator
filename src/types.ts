@@ -227,7 +227,12 @@ export interface VertexConfigStatus {
   location: string;
   model: string;
   credentials_detected: boolean;
+  credentials_environment_available?: boolean;
   credential_source: string;
+  authentication_mode?: string;
+  configuration_ready?: boolean;
+  vertex_api_verified?: boolean | null;
+  verification_scope?: string;
   is_ready: boolean;
   status_message?: string;
   read_only?: boolean;
