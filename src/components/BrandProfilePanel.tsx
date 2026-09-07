@@ -1,23 +1,17 @@
-import React, { useRef, useState } from 'react';
+import React from 'react';
 import {
   ShieldCheck,
-  Upload,
-  Image as ImageIcon,
-  CheckCircle2,
-  Sliders,
+  Check,
   Sparkles,
-  FileText,
-  X,
-  Trash2,
+  Layers,
   Eye,
   Info,
-  Layers,
-  Settings2,
-  Check,
+  X,
   RotateCcw,
+  CheckCircle2,
+  Lock,
 } from 'lucide-react';
-import { BrandProfile, WatermarkMode, WatermarkPosition, WatermarkScope } from '../types';
-import { hasUploadedLogo, resolveBrandWatermark } from '../utils/brandProfile';
+import { BrandProfile } from '../types';
 
 interface BrandProfilePanelProps {
   brandProfile: BrandProfile;
@@ -36,65 +30,29 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
   onReset,
   asModal = false,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'watermark' | 'metadata'>('watermark');
-
   if (asModal && !isOpen) {
     return null;
   }
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        updateProfile({
-          logo_url: dataUrl,
-          logo_uploaded: true,
-          show_logo: true,
-        });
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemoveLogo = () => {
-    updateProfile({
-      logo_url: '',
-      logo_uploaded: false,
-    });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const currentMode: WatermarkMode =
-    brandProfile.watermark_mode ||
-    (brandProfile.show_logo !== false || brandProfile.show_brand_name !== false
-      ? 'logo_and_text'
-      : 'none');
-
-  const currentPosition: WatermarkPosition =
-    brandProfile.position || 'bottom-right';
-
-  const currentScope: WatermarkScope = brandProfile.apply_to || 'all';
-
-  const currentPadding = brandProfile.padding || brandProfile.edge_padding || 24;
-
-  const currentOpacity = brandProfile.opacity ?? 0.85;
-
-  const currentLogoSize = brandProfile.logo_size || 'medium';
-
   const defaultCreditText =
     brandProfile.default_credit || brandProfile.brand_name || 'Kế Toán Diệu Tâm';
-  const logoUploaded = hasUploadedLogo(brandProfile);
-  const resolvedWatermark = resolveBrandWatermark(brandProfile);
 
   const updateProfile = (changes: Partial<BrandProfile>) => {
-    const next = { ...brandProfile, ...changes };
+    const next: BrandProfile = {
+      ...brandProfile,
+      ...changes,
+      // Always enforce official production watermark invariants on update
+      enabled: true,
+      logo_url: '/api/brand-logo',
+      logo_uploaded: true,
+      watermark_mode: 'logo_only',
+      position: 'bottom-right',
+      apply_to: 'all',
+      show_logo: true,
+      show_brand_name: false,
+      apply_to_featured: true,
+      apply_to_ai_inline: true,
+    };
     if ('brand_name' in changes && !brandProfile.default_credit) {
       next.default_credit = changes.brand_name || '';
     }
@@ -103,7 +61,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
 
   const content = (
     <div className="space-y-6">
-      {/* 3 Concepts Clarity Banner (Requirement 4) */}
+      {/* 3 Concepts Clarity Banner */}
       <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 sm:p-5 border border-slate-800 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <Info className="w-4 h-4 text-teal-400 shrink-0" />
@@ -118,7 +76,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
               1. Watermark đồ họa
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
-              Đóng dấu logo &amp; chữ trực tiếp lên pixel ảnh bằng công cụ Sharp lập trình. <strong>Không dùng AI vẽ logo</strong> để đảm bảo 100% chuẩn xác.
+              Đóng dấu logo trực tiếp lên pixel ảnh bằng Sharp trên server. <strong>Không dùng AI vẽ logo</strong> để đảm bảo 100% chuẩn xác nhận diện thương hiệu.
             </p>
           </div>
 
@@ -128,7 +86,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
               2. Metadata biên tập
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
-              Bao gồm Alt text, Title, Caption tối ưu SEO và người đọc. Được chỉnh sửa chi tiết theo từng ngữ cảnh bài viết.
+              Bao gồm Alt text, Title, Caption tối ưu SEO và người đọc. Được biên tập viên kiểm tra chi tiết theo từng ngữ cảnh bài viết.
             </p>
           </div>
 
@@ -146,7 +104,7 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
 
       {/* Main Configuration Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Brand Identity & Mode */}
+        {/* Left Column: Brand Identity & Read-Only Watermark Specification */}
         <div className="lg:col-span-7 space-y-5">
           {/* Section A & B: Logo & Brand Identity (Official read-only) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-xs">
@@ -155,14 +113,15 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 <ShieldCheck className="w-4 h-4 text-teal-600" />
                 Nhận diện &amp; Logo thương hiệu chính thức
               </h4>
-              <span className="text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 rounded-full">
-                Hệ thống tự động
+              <span className="text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <Lock className="w-3 h-3 text-teal-600" />
+                Hệ thống tự động (Read-only)
               </span>
             </div>
 
             {/* Official Logo Display Box (Read-only) */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/70">
-              <div className="w-24 h-20 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs p-1.5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl bg-slate-50/80 border border-slate-200/70">
+              <div className="w-28 h-20 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs p-2">
                 <img
                   src="/api/brand-logo"
                   alt="Logo Kế Toán Diệu Tâm"
@@ -170,280 +129,91 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 />
               </div>
 
-              <div className="flex-1 space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900">Kế Toán Diệu Tâm</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-100 text-teal-800">
+              <div className="flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-sm font-bold text-slate-900 mr-1">
+                    Kế Toán Diệu Tâm
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 border border-teal-200/60">
                     Logo chính thức
                   </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200/60">
                     Watermark tự động
                   </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-200 text-slate-800">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200/60">
+                    Chỉ logo
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 border border-slate-300/60">
                     Áp dụng cho tất cả ảnh
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-normal">
-                  Hệ thống sử dụng logo chính thức nền trong suốt (biểu tượng và chữ “Kế Toán Diệu Tâm”) đóng dấu tự động server-side cho ảnh bìa (Featured) và ảnh minh họa (Inline). Không cần tải logo thủ công.
+                  Hệ thống sử dụng logo chính thức nền trong suốt (biểu tượng và dòng chữ “Kế Toán Diệu Tâm”) đóng dấu tự động server-side cho ảnh bìa (Featured) và ảnh minh họa (Inline). Không cần tải logo thủ công.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Section C: Watermark Mode */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3 shadow-xs">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Chế độ hiển thị Watermark
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {[
-                {
-                  id: 'logo_and_text' as WatermarkMode,
-                  title: 'Logo + Tên thương hiệu',
-                  desc: 'Huy hiệu kết hợp biểu trưng và dòng chữ tên thương hiệu.',
-                  badge: 'Khuyên dùng',
-                },
-                {
-                  id: 'logo_only' as WatermarkMode,
-                  title: 'Chỉ logo',
-                  desc: 'Phù hợp khi logo đã vẽ sẵn chữ hoặc muốn phong cách tối giản.',
-                  badge: 'Gọn gàng',
-                },
-                {
-                  id: 'text_only' as WatermarkMode,
-                  title: 'Chỉ tên thương hiệu',
-                  desc: 'Chỉ hiển thị tên dạng chữ nổi bật không kèm biểu tượng.',
-                  badge: 'Đơn giản',
-                },
-                {
-                  id: 'none' as WatermarkMode,
-                  title: 'Không đóng watermark',
-                  desc: 'Ảnh xuất bản xuất nguyên gốc, không can thiệp watermark lên pixel.',
-                  badge: 'Tắt đóng dấu',
-                },
-              ].map((item) => {
-                const isSelected = currentMode === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() =>
-                      updateProfile({
-                        watermark_mode: item.id,
-                        enabled: item.id !== 'none',
-                        show_logo: item.id === 'logo_and_text' || item.id === 'logo_only',
-                        show_brand_name:
-                          item.id === 'logo_and_text' || item.id === 'text_only',
-                      })
-                    }
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-teal-600 bg-teal-50/60 ring-1 ring-teal-600'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span
-                          className={`text-xs font-bold ${
-                            isSelected ? 'text-teal-900' : 'text-slate-800'
-                          }`}
-                        >
-                          {item.title}
-                        </span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                            isSelected
-                              ? 'bg-teal-200/80 text-teal-800'
-                              : 'bg-slate-100 text-slate-500'
-                          }`}
-                        >
-                          {item.badge}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 leading-normal">
-                        {item.desc}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+          {/* Section C: Production Watermark Policy (Read-Only) */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                Quy chuẩn đóng dấu Watermark Production
+              </h4>
+              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-600" />
+                Quy định cố định
+              </span>
             </div>
-          </div>
 
-          {/* Section D, E, F, G: Position, Size, Opacity, Padding */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-xs">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Vị trí &amp; Tùy biến hiển thị trên ảnh
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Position */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  Vị trí đóng dấu trên khung hình
-                </label>
-                <select
-                  value={currentPosition}
-                  onChange={(e) =>
-                    updateProfile({
-                      position: e.target.value as WatermarkPosition,
-                    })
-                  }
-                  className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
-                >
-                  <option value="bottom-right">Góc dưới phải (Khuyên dùng chuẩn báo chí)</option>
-                  <option value="bottom-left">Góc dưới trái</option>
-                  <option value="bottom-center">Góc dưới giữa</option>
-                  <option value="top-right">Góc trên phải</option>
-                  <option value="top-left">Góc trên trái</option>
-                </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-1">
+                <div className="text-[11px] text-slate-500 font-medium">Chế độ hiển thị</div>
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+                  Chỉ logo (Logo-only)
+                </div>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Logo chính thức đã kết hợp sẵn biểu trưng và tên thương hiệu, không chèn chữ trùng lặp.
+                </p>
               </div>
 
-              {/* Logo Size */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  Kích thước watermark
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { id: 'small', label: 'Nhỏ (26px)' },
-                    { id: 'medium', label: 'Vừa (34px)' },
-                    { id: 'large', label: 'Lớn (42px)' },
-                  ].map((sz) => (
-                    <button
-                      key={sz.id}
-                      type="button"
-                      onClick={() =>
-                        updateProfile({
-                          logo_size: sz.id as 'small' | 'medium' | 'large',
-                        })
-                      }
-                      className={`py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                        currentLogoSize === sz.id
-                          ? 'border-teal-600 bg-teal-50 text-teal-900 ring-1 ring-teal-600'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {sz.label}
-                    </button>
-                  ))}
+              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-1">
+                <div className="text-[11px] text-slate-500 font-medium">Vị trí đóng dấu</div>
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+                  Góc dưới phải (Bottom-Right)
                 </div>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Vị trí chuẩn báo chí chuyên nghiệp, cân đối và không che khuất nội dung trung tâm.
+                </p>
               </div>
 
-              {/* Opacity Slider */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-800">
-                    Độ mờ nhận diện (Opacity)
-                  </label>
-                  <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
-                    {Math.round(currentOpacity * 100)}%
-                  </span>
+              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-1">
+                <div className="text-[11px] text-slate-500 font-medium">Phạm vi áp dụng</div>
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+                  Tất cả ảnh (All images)
                 </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={currentOpacity}
-                  onChange={(e) =>
-                    updateProfile({
-                      opacity: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-teal-600 cursor-pointer"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-                  <span>10% (Rất mờ)</span>
-                  <span>85% (Tiêu chuẩn)</span>
-                  <span>100% (Đậm nét)</span>
-                </div>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Áp dụng đồng bộ cho toàn bộ ảnh bìa (Featured) và ảnh minh họa (Inline) của bài viết.
+                </p>
               </div>
 
-              {/* Padding */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  Khoảng cách mép ảnh (Lề an toàn)
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { val: 16, label: '16px (Sát mép)' },
-                    { val: 24, label: '24px (Chuẩn)' },
-                    { val: 32, label: '32px (Rộng rãi)' },
-                  ].map((p) => (
-                    <button
-                      key={p.val}
-                      type="button"
-                      onClick={() =>
-                        updateProfile({
-                          edge_padding: p.val,
-                          padding: p.val,
-                        })
-                      }
-                      className={`py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                        currentPadding === p.val
-                          ? 'border-teal-600 bg-teal-50 text-teal-900 ring-1 ring-teal-600'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-1">
+                <div className="text-[11px] text-slate-500 font-medium">Tỷ lệ kích thước &amp; Độ mờ</div>
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+                  Featured: 17% (0.90) | Inline: 14% (0.75)
                 </div>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Tự động căn chỉnh theo tỷ lệ pixel khung hình, đảm bảo tính thẩm mỹ và độ tương phản cao.
+                </p>
               </div>
             </div>
 
-            {/* Scope: Apply To */}
-            <div className="pt-3 border-t border-slate-100">
-              <label className="block text-xs font-semibold text-slate-800 mb-2">
-                Phạm vi áp dụng đóng dấu
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {[
-                  {
-                    id: 'all' as WatermarkScope,
-                    title: 'Tất cả ảnh',
-                    subtitle: 'Ảnh bìa + Ảnh trong bài',
-                  },
-                  {
-                    id: 'featured_only' as WatermarkScope,
-                    title: 'Chỉ ảnh bìa',
-                    subtitle: 'Chỉ đóng dấu ảnh đại diện',
-                  },
-                  {
-                    id: 'inline_only' as WatermarkScope,
-                    title: 'Chỉ ảnh trong bài',
-                    subtitle: 'Không đóng dấu ảnh bìa',
-                  },
-                ].map((sc) => {
-                  const isSelected = currentScope === sc.id;
-                  return (
-                    <button
-                      key={sc.id}
-                      type="button"
-                      onClick={() =>
-                        updateProfile({
-                          apply_to: sc.id,
-                          apply_to_featured: sc.id === 'all' || sc.id === 'featured_only',
-                          apply_to_ai_inline: sc.id === 'all' || sc.id === 'inline_only',
-                        })
-                      }
-                      className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'border-teal-600 bg-teal-50 text-teal-950 ring-1 ring-teal-600'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="font-bold text-xs">{sc.title}</div>
-                      <div className="text-[11px] text-slate-500">{sc.subtitle}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* Source Documents Branding Policy Toggle */}
             <div className="pt-3 border-t border-slate-100">
               <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 cursor-pointer transition-colors">
                 <input
@@ -458,10 +228,10 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 />
                 <div className="space-y-1">
                   <span className="font-bold text-xs text-slate-800 block">
-                    Đóng dấu lên tài liệu nguồn
+                    Đóng dấu lên tài liệu nguồn / biểu mẫu
                   </span>
                   <p className="text-[11px] text-slate-500 leading-normal">
-                    Áp dụng cho biểu mẫu, bảng số liệu, ảnh chụp chứng từ hoặc tài liệu được tái tạo từ ảnh gốc.
+                    Áp dụng thanh chân trang bảo toàn 100% số liệu biểu mẫu, bảng số hoặc chứng từ khi tái tạo từ ảnh gốc.
                   </p>
                 </div>
               </label>
@@ -559,15 +329,15 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
               <div
                 className="absolute z-20 pointer-events-none transition-all duration-200"
                 style={{
-                  bottom: `${Math.max(12, currentPadding / 2)}px`,
-                  right: `${Math.max(12, currentPadding / 2)}px`,
+                  bottom: '16px',
+                  right: '16px',
                 }}
               >
                 <img
                   src="/api/brand-logo"
                   alt="Logo chính thức Kế Toán Diệu Tâm"
                   className="h-9 sm:h-11 w-auto object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
-                  style={{ opacity: currentOpacity }}
+                  style={{ opacity: 0.85 }}
                 />
               </div>
             </div>

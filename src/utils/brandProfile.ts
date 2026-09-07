@@ -88,46 +88,34 @@ function resolveWatermarkScope(profile: Record<string, unknown>): WatermarkScope
 
 /**
  * Normalizes old, partial, and untrusted persisted settings before they reach UI, API, or manifest.
+ * Guarantees that official production watermark policy is always applied and prevents stale
+ * localStorage values (such as none, text_only, logo_and_text, or disabled state) from corrupting the UI.
  */
 export function normalizeBrandProfile(profile: Partial<BrandProfile> | unknown = {}): BrandProfile {
   const raw = isRecord(profile) ? profile : {};
-  const watermark_mode = resolveWatermarkMode(raw);
-  const apply_to = resolveWatermarkScope(raw);
-  const brand_name = stringValue(raw.brand_name, DEFAULT_BRAND_PROFILE.brand_name);
-  const rawLogoUrl = stringValue(raw.logo_url);
-  const logo_url = rawLogoUrl || '/api/brand-logo';
-  const padding = Math.max(
-    numberValue(raw.padding, numberValue(raw.edge_padding, DEFAULT_BRAND_PROFILE.padding ?? 24)),
-    8
-  );
-  const position = isOneOf(raw.position, WATERMARK_POSITIONS)
-    ? raw.position
-    : DEFAULT_BRAND_PROFILE.position;
-  const logo_size = isOneOf(raw.logo_size, LOGO_SIZES)
-    ? raw.logo_size
-    : DEFAULT_BRAND_PROFILE.logo_size;
+  const brand_name = stringValue(raw.brand_name, DEFAULT_BRAND_PROFILE.brand_name) || 'Kế Toán Diệu Tâm';
 
   return {
     ...DEFAULT_BRAND_PROFILE,
-    enabled: booleanValue(raw.enabled, watermark_mode !== 'none'),
+    enabled: true,
     brand_name,
-    logo_url,
-    logo_uploaded: booleanValue(raw.logo_uploaded, Boolean(logo_url)) && Boolean(logo_url),
-    watermark_mode,
-    position,
-    logo_size,
-    opacity: Math.min(Math.max(numberValue(raw.opacity, DEFAULT_BRAND_PROFILE.opacity), 0.1), 1),
-    edge_padding: padding,
-    padding,
-    apply_to,
+    logo_url: '/api/brand-logo',
+    logo_uploaded: true,
+    watermark_mode: 'logo_only',
+    position: 'bottom-right',
+    logo_size: 'medium',
+    opacity: 0.85,
+    edge_padding: 24,
+    padding: 24,
+    apply_to: 'all',
     // Source documents are deliberately independent from normal inline-image scope.
     apply_to_source_docs: booleanValue(raw.apply_to_source_docs, false),
-    default_credit: stringValue(raw.default_credit, brand_name),
+    default_credit: stringValue(raw.default_credit, brand_name) || brand_name,
     show_credit_in_article: booleanValue(raw.show_credit_in_article, false),
-    show_logo: watermark_mode === 'logo_and_text' || watermark_mode === 'logo_only',
-    show_brand_name: watermark_mode === 'logo_and_text' || watermark_mode === 'text_only',
-    apply_to_featured: apply_to === 'all' || apply_to === 'featured_only',
-    apply_to_ai_inline: apply_to === 'all' || apply_to === 'inline_only',
+    show_logo: true,
+    show_brand_name: false,
+    apply_to_featured: true,
+    apply_to_ai_inline: true,
   };
 }
 
@@ -178,20 +166,11 @@ export function hasUploadedLogo(profile: Pick<BrandProfile, 'logo_url'>): boolea
 /**
  * Resolves the official logo watermark behavior for UI previews.
  */
-export function resolveBrandWatermark(profile: BrandProfile): ResolvedBrandWatermark {
-  const enabled = profile.enabled !== false && profile.watermark_mode !== 'none';
-  const hasLogo = hasUploadedLogo(profile);
-  const wantsLogo =
-    profile.watermark_mode === 'logo_and_text' || profile.watermark_mode === 'logo_only';
-  const wantsText =
-    profile.watermark_mode === 'logo_and_text' || profile.watermark_mode === 'text_only';
-  const showLogo = enabled && wantsLogo && hasLogo;
-  const showBrandName = enabled && wantsText && Boolean(profile.brand_name.trim());
-
+export function resolveBrandWatermark(_profile?: BrandProfile): ResolvedBrandWatermark {
   return {
-    showLogo,
-    showBrandName,
-    isApplied: showLogo || showBrandName,
+    showLogo: true,
+    showBrandName: false,
+    isApplied: true,
     usesTextFallback: false,
   };
 }
@@ -201,17 +180,18 @@ export function getEffectiveCredit(slotCredit: string | undefined, profile: Bran
 }
 
 export function toBrandProfileManifest(profile: BrandProfile): BrandProfileManifest {
+  const normalized = normalizeBrandProfile(profile);
   return {
-    enabled: profile.enabled !== false && profile.watermark_mode !== 'none',
-    brand_name: profile.brand_name,
-    logo_uploaded: hasUploadedLogo(profile),
-    watermark_mode: profile.watermark_mode,
-    position: profile.position,
-    opacity: profile.opacity,
-    padding: profile.padding ?? profile.edge_padding,
-    apply_to: profile.apply_to,
-    apply_to_source_docs: Boolean(profile.apply_to_source_docs),
-    default_credit: profile.default_credit || profile.brand_name,
-    show_credit_in_article: profile.show_credit_in_article,
+    enabled: true,
+    brand_name: normalized.brand_name,
+    logo_uploaded: true,
+    watermark_mode: 'logo_only',
+    position: 'bottom-right',
+    opacity: 0.85,
+    padding: 24,
+    apply_to: 'all',
+    apply_to_source_docs: Boolean(normalized.apply_to_source_docs),
+    default_credit: normalized.default_credit || normalized.brand_name,
+    show_credit_in_article: Boolean(normalized.show_credit_in_article),
   };
 }

@@ -1610,9 +1610,18 @@ async function startServer() {
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
+      if (isProduction) {
+        console.error(
+          `[Startup Fatal] Port ${PORT} is already in use. In production (Cloud Run), the server must listen strictly on process.env.PORT (${PORT}) without port fallback. Startup failed.`
+        );
+        process.exit(1);
+      }
+
       const fallbackPort = Number(process.env.DEFAULT_APP_PORT) || 3000;
       if (PORT !== fallbackPort) {
-        console.warn(`[Startup] Port ${PORT} is in use (ingress proxy or port collision). Falling back to port ${fallbackPort}...`);
+        console.warn(
+          `[Startup] Port ${PORT} is in use (development port collision). Falling back to port ${fallbackPort}...`
+        );
         app.listen(fallbackPort, '0.0.0.0', () => {
           console.log(`KTDT AI Image Rebuilder server running at http://0.0.0.0:${fallbackPort}`);
         });
