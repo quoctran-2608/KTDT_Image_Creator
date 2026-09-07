@@ -231,9 +231,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 font-medium text-slate-700 shadow-2xs">
                 <ImageIcon className="w-3 h-3 text-teal-600 shrink-0" />
-                {brandProfile.logo_url || brandProfile.logo_uploaded
-                  ? 'Logo: Đã tải'
-                  : 'Logo: Chưa tải'}
+                Logo: <strong className="font-semibold text-teal-800">Chính thức</strong>
               </span>
 
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 font-medium text-slate-700 shadow-2xs">

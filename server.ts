@@ -27,6 +27,8 @@ import {
   applyBrandingWithSharp,
   rebuildSourceImage,
   bufferFromDataUrl,
+  getOfficialLogoBuffer,
+  resolveOfficialLogoPath,
 } from './server/brandPipeline';
 import {
   safeFetchHtml,
@@ -48,7 +50,7 @@ const __dirnameResolved =
   typeof __dirname !== 'undefined' ? __dirname : path.dirname(__filenameResolved);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const distPath = path.join(process.cwd(), 'dist');
 const distIndexPath = path.join(distPath, 'index.html');
 const hasBuiltFrontend = fs.existsSync(distIndexPath);
@@ -366,6 +368,17 @@ app.get('/api/health', (req, res) => {
     analysisReady: Boolean(serverVertexConfig.projectId || process.env.GEMINI_API_KEY),
     time: new Date().toISOString(),
   });
+});
+
+// Endpoint to serve official brand logo PNG for client UI & live preview
+app.get('/api/brand-logo', (_req, res) => {
+  const logoBuf = getOfficialLogoBuffer();
+  if (!logoBuf) {
+    return res.status(404).send('Official logo not found');
+  }
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.send(logoBuf);
 });
 
 /**
@@ -1567,7 +1580,7 @@ app.post('/api/generate-mock-image', async (req, res) => {
 
 // Start Express Server with Vite middleware
 async function startServer() {
-  if (!hasBuiltFrontend) {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -1581,6 +1594,12 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
+    const logoPath = resolveOfficialLogoPath();
+    if (logoPath) {
+      console.log(`[Startup] Official brand logo active at: ${logoPath}`);
+    } else {
+      console.warn('[Startup] Warning: Official brand logo not found in candidate paths.');
+    }
     console.log(`KTDT AI Image Rebuilder server running at http://localhost:${PORT}`);
   });
 }

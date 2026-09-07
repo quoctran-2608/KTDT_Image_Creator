@@ -1,5 +1,17 @@
 import sharp, { Sharp } from 'sharp';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { safeFetchImageBuffer } from './sourceDiscovery.js';
+
+const __filenameSafe =
+  typeof __filename !== 'undefined'
+    ? __filename
+    : typeof import.meta.url === 'string'
+    ? fileURLToPath(import.meta.url)
+    : process.cwd();
+const __dirnameSafe =
+  typeof __dirname !== 'undefined' ? __dirname : path.dirname(__filenameSafe);
 
 export interface BrandConfigInput {
   brand_name?: string;
@@ -34,7 +46,7 @@ export interface BrandConfigInput {
 
 /**
  * Built-in crisp SVG logo for Kế Toán Diệu Tâm (Lotus & Scale Balance Motif)
- * Clean vector with transparent background
+ * Retained for backward-compatibility only.
  */
 export const DEFAULT_BRAND_LOGO_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
@@ -55,6 +67,181 @@ export const DEFAULT_BRAND_LOGO_SVG = `
   <path d="M60 70 L60 88" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
 </svg>
 `.trim();
+
+// Cache for official logo buffer and metadata
+let cachedOfficialLogoBuffer: Buffer | null = null;
+let officialLogoResolvedPath: string | null = null;
+let officialLogoMetadata: { width: number; height: number } | null = null;
+
+// Cache prepared overlay buffers by key: `${targetW}_${targetH}_${opacity}`
+const preparedOverlayCache = new Map<string, Buffer>();
+
+/**
+ * Resolves the filesystem path to the official KTDT logo across all runtime environments:
+ * - Local development (cwd is project root)
+ * - Compiled build (node dist/server.cjs)
+ * - Cloud Run container deployment
+ */
+export function resolveOfficialLogoPath(): string | null {
+  if (officialLogoResolvedPath && fs.existsSync(officialLogoResolvedPath)) {
+    return officialLogoResolvedPath;
+  }
+
+  const candidatePaths = [
+    path.resolve(process.cwd(), 'server/assets/ktdt-logo.png'),
+    path.resolve(__dirnameSafe, '../server/assets/ktdt-logo.png'),
+    path.resolve(__dirnameSafe, 'server/assets/ktdt-logo.png'),
+    path.resolve(__dirnameSafe, 'assets/ktdt-logo.png'),
+    path.resolve(process.cwd(), 'dist/server/assets/ktdt-logo.png'),
+  ];
+
+  for (const candidate of candidatePaths) {
+    try {
+      if (fs.existsSync(candidate)) {
+        officialLogoResolvedPath = candidate;
+        return candidate;
+      }
+    } catch {
+      // Continue search
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns the cached in-memory Buffer of the official KTDT logo.
+ * Does not re-read disk on every request.
+ */
+export function getOfficialLogoBuffer(): Buffer | null {
+  if (cachedOfficialLogoBuffer) {
+    return cachedOfficialLogoBuffer;
+  }
+
+  const logoPath = resolveOfficialLogoPath();
+  if (!logoPath) {
+    console.warn('[BrandPipeline] Official KTDT logo not found in candidate paths. Watermark will be skipped.');
+    return null;
+  }
+
+  try {
+    const buffer = fs.readFileSync(logoPath);
+    if (buffer && buffer.length > 0) {
+      cachedOfficialLogoBuffer = buffer;
+      console.log(`[BrandPipeline] Successfully loaded official KTDT logo from: ${logoPath} (${buffer.length} bytes)`);
+      return cachedOfficialLogoBuffer;
+    }
+  } catch (err) {
+    console.warn('[BrandPipeline] Failed to read official KTDT logo from disk:', err);
+  }
+
+  return null;
+}
+
+/**
+ * Retrieves official logo pixel dimensions.
+ */
+export async function getOfficialLogoMetadata(): Promise<{ width: number; height: number } | null> {
+  if (officialLogoMetadata) {
+    return officialLogoMetadata;
+  }
+  const buf = getOfficialLogoBuffer();
+  if (!buf) return null;
+
+  try {
+    const meta = await sharp(buf).metadata();
+    if (meta.width && meta.height) {
+      officialLogoMetadata = { width: meta.width, height: meta.height };
+      return officialLogoMetadata;
+    }
+  } catch (err) {
+    console.warn('[BrandPipeline] Failed to read official logo metadata:', err);
+  }
+  return null;
+}
+
+/**
+ * Prepares a transparent PNG overlay buffer with the requested dimensions and opacity.
+ * Adds a soft silhouette drop shadow to ensure legibility on both bright and dark backgrounds.
+ * Caches prepared overlays in memory for instant reuse.
+ */
+async function getPreparedLogoOverlay(
+  targetW: number,
+  targetH: number,
+  opacity: number
+): Promise<{ overlay: Buffer; width: number; height: number } | null> {
+  const cacheKey = `${targetW}_${targetH}_${opacity.toFixed(2)}`;
+  const cached = preparedOverlayCache.get(cacheKey);
+  if (cached) {
+    return { overlay: cached, width: targetW + 4, height: targetH + 4 };
+  }
+
+  const logoBuf = getOfficialLogoBuffer();
+  if (!logoBuf) return null;
+
+  try {
+    // 1. Resize maintaining exact aspect ratio, no crop, no stretch, transparent bg
+    const resizedLogo = await sharp(logoBuf)
+      .resize(targetW, targetH, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+
+    const { data, info } = await sharp(resizedLogo)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // 2. Modulate alpha channel for logo opacity
+    const logoData = Buffer.from(data);
+    for (let i = 3; i < logoData.length; i += 4) {
+      logoData[i] = Math.round(logoData[i] * opacity);
+    }
+    const logoWithOpacity = await sharp(logoData, { raw: info })
+      .png()
+      .toBuffer();
+
+    // 3. Subtle soft silhouette shadow (pure logo shape shadow, no box/badge)
+    const shadowData = Buffer.alloc(data.length);
+    for (let i = 0; i < data.length; i += 4) {
+      shadowData[i] = 0;
+      shadowData[i + 1] = 0;
+      shadowData[i + 2] = 0;
+      shadowData[i + 3] = Math.round(data[i + 3] * 0.35);
+    }
+    const blurredShadow = await sharp(shadowData, { raw: info })
+      .blur(1.5)
+      .png()
+      .toBuffer();
+
+    // 4. Combine shadow and logo into a single transparent overlay with 2px padding
+    const overlayWidth = info.width + 4;
+    const overlayHeight = info.height + 4;
+
+    const overlay = await sharp({
+      create: {
+        width: overlayWidth,
+        height: overlayHeight,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        { input: blurredShadow, left: 1, top: 2 },
+        { input: logoWithOpacity, left: 1, top: 1 },
+      ])
+      .png()
+      .toBuffer();
+
+    preparedOverlayCache.set(cacheKey, overlay);
+    return { overlay, width: overlayWidth, height: overlayHeight };
+  } catch (err) {
+    console.warn('[BrandPipeline] Error preparing official logo overlay:', err);
+    return null;
+  }
+}
 
 /**
  * Helper to parse buffer from data URL or raw buffer
@@ -86,59 +273,8 @@ export async function applyBrandingWithSharp(
   height: number;
   brandApplied: boolean;
 }> {
-  const brandName = (brandConfig.brand_name || '').trim();
-  const hasUploadedLogo = /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(
-    brandConfig.logo_url || ''
-  );
-
-  // Watermark mode resolution
-  let watermarkMode: 'logo_and_text' | 'logo_only' | 'text_only' | 'none' = 'logo_and_text';
-  if (brandConfig.watermark_mode) {
-    watermarkMode = brandConfig.watermark_mode;
-  } else if (brandConfig.show_logo === false && brandConfig.show_brand_name === false) {
-    watermarkMode = 'none';
-  } else if (brandConfig.show_logo === false) {
-    watermarkMode = 'text_only';
-  } else if (brandConfig.show_brand_name === false) {
-    watermarkMode = 'logo_only';
-  }
-
-  const isEnabled = brandConfig.enabled !== false && watermarkMode !== 'none';
-
-  // A logo is only valid when the editor supplied an exact image data URL.
-  // Never synthesize, redraw, or fall back to a built-in logo in production output.
-  const wantsLogo = watermarkMode === 'logo_and_text' || watermarkMode === 'logo_only';
-  const showBrandName =
-    isEnabled &&
-    (watermarkMode === 'logo_and_text' || watermarkMode === 'text_only') &&
-    Boolean(brandName);
-
-  const rawPosition = (brandConfig.position || 'bottom-right').replace('_', '-');
-  const position = (
-    ['bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-center'].includes(rawPosition)
-      ? rawPosition
-      : 'bottom-right'
-  ) as 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' | 'bottom-center';
-
-  const logoSize = brandConfig.logo_size || 'medium';
-  const opacity = Math.min(Math.max(brandConfig.opacity ?? 0.85, 0.1), 1.0);
-  const edgePadding = Math.max(brandConfig.padding ?? brandConfig.edge_padding ?? 24, 8);
-
   const isFeatured = options.slotType === 'featured';
   const isSourceDoc = Boolean(options.isSourceDoc);
-
-  // Determine whether branding applies to generated featured and inline images.
-  const hasExplicitScope = Boolean(brandConfig.apply_to);
-  const applyTo = brandConfig.apply_to || 'all';
-  let shouldApplyBrand = isEnabled;
-  if (hasExplicitScope) {
-    shouldApplyBrand = isEnabled &&
-      (applyTo === 'all' || (isFeatured ? applyTo === 'featured_only' : applyTo === 'inline_only'));
-  } else if (isFeatured) {
-    shouldApplyBrand = isEnabled && brandConfig.apply_to_featured !== false;
-  } else {
-    shouldApplyBrand = isEnabled && brandConfig.apply_to_ai_inline !== false;
-  }
 
   // 1. Initial image load
   let sharpInstance = sharp(inputBuffer);
@@ -157,8 +293,7 @@ export async function applyBrandingWithSharp(
     withoutEnlargement: true,
   });
 
-  // Sharp metadata does not resolve resize transforms. Calculate the real output size
-  // so a watermark composite never exceeds a small source image with withoutEnlargement.
+  // Calculate real output size
   const resizeScale = Math.min(
     finalWidth / originalWidth,
     finalHeight / originalHeight,
@@ -171,135 +306,68 @@ export async function applyBrandingWithSharp(
   // They receive a footer only when the editor explicitly opts in.
   if (isSourceDoc) {
     const shouldApplySourceBrand =
-      isEnabled && brandConfig.apply_to_source_docs === true;
+      brandConfig.enabled !== false && brandConfig.apply_to_source_docs === true;
     return applySourceDocumentBranding(
       sharpInstance,
       currentW,
       currentH,
       shouldApplySourceBrand,
-      wantsLogo,
-      hasUploadedLogo ? brandConfig.logo_url : undefined,
-      showBrandName,
-      brandName,
-      opacity
+      true,
+      brandConfig.logo_url,
+      false,
+      brandConfig.brand_name || 'Kế Toán Diệu Tâm',
+      0.85
     );
   }
 
-  // 2. For AI-Generated Images (Featured & Inline): Apply clean brand overlay badge.
-  const baseSizeConfig = {
-      small: { logoH: 26, fontSize: 12, padY: 6, padX: 10, gap: 8 },
-      medium: { logoH: 34, fontSize: 13, padY: 8, padX: 14, gap: 10 },
-      large: { logoH: 42, fontSize: 15, padY: 10, padX: 18, gap: 12 },
-    }[logoSize];
-  const textWidthAtBaseSize = showBrandName
-    ? Math.round(brandName.length * (baseSizeConfig.fontSize * 0.65))
-    : 0;
-  const baseBadgeW =
-    (wantsLogo ? baseSizeConfig.logoH : 0) +
-    (wantsLogo && showBrandName ? baseSizeConfig.gap : 0) +
-    textWidthAtBaseSize +
-    baseSizeConfig.padX * 2;
-  const baseBadgeH = baseSizeConfig.logoH + baseSizeConfig.padY * 2;
-  const badgeScale = Math.min(1, currentW / baseBadgeW, currentH / baseBadgeH);
-  const sizeConfig = {
-    logoH: Math.max(1, Math.floor(baseSizeConfig.logoH * badgeScale)),
-    fontSize: Math.max(1, Math.floor(baseSizeConfig.fontSize * badgeScale)),
-    padY: Math.max(1, Math.floor(baseSizeConfig.padY * badgeScale)),
-    padX: Math.max(1, Math.floor(baseSizeConfig.padX * badgeScale)),
-    gap: Math.max(1, Math.floor(baseSizeConfig.gap * badgeScale)),
-  };
-  const safeEdgePadding = Math.min(
-    Math.max(Math.floor(edgePadding * badgeScale), 0),
-    Math.max(0, Math.floor(Math.min(currentW, currentH) / 8))
-  );
+  // 2. PRODUCTION BRAND POLICY FOR AI-GENERATED IMAGES (FEATURED & INLINE):
+  // - watermark_mode = logo_only
+  // - show_logo = true
+  // - show_brand_name = false (NO SVG <text>, NO separate text, NO dark badge)
+  // - apply_to = all
+  // - official logo = server/assets/ktdt-logo.png
+  // - Browser cannot disable, change to text_only/none, or substitute logo
+  let brandApplied = false;
 
-  let processedLogoPng: Buffer | null = null;
-  if (shouldApplyBrand && wantsLogo && hasUploadedLogo) {
+  const officialMeta = await getOfficialLogoMetadata();
+  if (!officialMeta) {
+    console.warn('[BrandPipeline] Official KTDT logo not available or failed to load. Skipping watermark application gracefully without crash or fallback.');
+  } else {
     try {
-      processedLogoPng = await sharp(bufferFromDataUrl(brandConfig.logo_url!))
-        .resize({
-          width: sizeConfig.logoH,
-          height: sizeConfig.logoH,
-          fit: 'contain',
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
-        .png()
-        .toBuffer();
-    } catch (err) {
-      console.warn('Could not process uploaded logo; skipping logo watermark:', err);
+      // Sizing guidelines:
+      // INLINE: width ~14% of image width, opacity 0.75, bottom-right, edge padding 24px
+      // FEATURED: width ~17% of image width, opacity 0.90, bottom-right, edge padding 28px
+      const widthRatio = isFeatured ? 0.17 : 0.14;
+      const targetOpacity = isFeatured ? 0.90 : 0.75;
+      const edgePadding = isFeatured ? 28 : 24;
+
+      const targetLogoW = Math.max(48, Math.min(Math.round(currentW * widthRatio), Math.round(currentW * 0.4)));
+      const logoAspect = officialMeta.height / officialMeta.width;
+      const targetLogoH = Math.max(32, Math.round(targetLogoW * logoAspect));
+
+      const prepared = await getPreparedLogoOverlay(targetLogoW, targetLogoH, targetOpacity);
+      if (prepared) {
+        const { overlay, width: overlayW, height: overlayH } = prepared;
+
+        // Position: Bottom-Right with edge padding
+        const left = Math.max(0, currentW - overlayW - edgePadding);
+        const top = Math.max(0, currentH - overlayH - edgePadding);
+
+        sharpInstance = sharpInstance.composite([
+          {
+            input: overlay,
+            left: Math.round(left),
+            top: Math.round(top),
+          },
+        ]);
+        brandApplied = true;
+      } else {
+        console.warn('[BrandPipeline] Failed to create official logo overlay; proceeding without watermark.');
+      }
+    } catch (overlayErr) {
+      console.warn('[BrandPipeline] Error compositing official logo watermark:', overlayErr);
+      brandApplied = false;
     }
-  }
-  const showLogo = Boolean(processedLogoPng);
-  const brandApplied = shouldApplyBrand && (showLogo || showBrandName);
-
-  if (brandApplied) {
-
-    // Calculate approximate text width for background card
-    const approxTextWidth = showBrandName ? Math.round(brandName.length * (sizeConfig.fontSize * 0.65)) : 0;
-    const badgeW = (showLogo ? sizeConfig.logoH : 0) +
-      (showLogo && showBrandName ? sizeConfig.gap : 0) +
-      approxTextWidth +
-      sizeConfig.padX * 2;
-    const badgeH = sizeConfig.logoH + sizeConfig.padY * 2;
-
-    // Calculate badge coordinates according to safe area and position
-    let badgeLeft = safeEdgePadding;
-    let badgeTop = safeEdgePadding;
-
-    if (position === 'bottom-right') {
-      badgeLeft = Math.max(currentW - badgeW - safeEdgePadding, 0);
-      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
-    } else if (position === 'bottom-left') {
-      badgeLeft = safeEdgePadding;
-      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
-    } else if (position === 'bottom-center') {
-      badgeLeft = Math.max(Math.round((currentW - badgeW) / 2), 0);
-      badgeTop = Math.max(currentH - badgeH - safeEdgePadding, 0);
-    } else if (position === 'top-right') {
-      badgeLeft = Math.max(currentW - badgeW - safeEdgePadding, 0);
-      badgeTop = safeEdgePadding;
-    } else if (position === 'top-left') {
-      badgeLeft = safeEdgePadding;
-      badgeTop = safeEdgePadding;
-    }
-
-    // Render composite badge as SVG backdrop with text and embedded logo
-    const logoBase64 = processedLogoPng ? processedLogoPng.toString('base64') : '';
-    const logoX = sizeConfig.padX;
-    const logoY = sizeConfig.padY;
-    const textX = logoX + (showLogo ? sizeConfig.logoH + sizeConfig.gap : 0);
-    const textY = badgeH / 2 + sizeConfig.fontSize * 0.35;
-
-    const badgeSvg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}" viewBox="0 0 ${badgeW} ${badgeH}">
-      <defs>
-        <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.35" />
-        </filter>
-        <linearGradient id="badgeBg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#0f172a" stop-opacity="${opacity * 0.95}" />
-          <stop offset="100%" stop-color="#1e293b" stop-opacity="${opacity * 0.92}" />
-        </linearGradient>
-      </defs>
-      <rect width="${badgeW}" height="${badgeH}" rx="10" fill="url(#badgeBg)" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1" filter="url(#shadow)" />
-      ${showLogo && logoBase64 ? `
-        <image href="data:image/png;base64,${logoBase64}" x="${logoX}" y="${logoY}" width="${sizeConfig.logoH}" height="${sizeConfig.logoH}" />
-      ` : ''}
-      ${showBrandName ? `
-        <text x="${textX}" y="${textY}" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${sizeConfig.fontSize}" font-weight="600" opacity="${opacity}">
-          ${escapeXml(brandName)}
-        </text>
-      ` : ''}
-    </svg>
-    `.trim();
-
-    sharpInstance = sharpInstance.composite([
-      {
-        input: Buffer.from(badgeSvg),
-        top: Math.round(badgeTop),
-        left: Math.round(badgeLeft),
-      },
-    ]);
   }
 
   // 4. Output optimized WebP
@@ -333,19 +401,22 @@ async function applySourceDocumentBranding(
   brandApplied: boolean;
 }> {
   let footerLogoBase64 = '';
-  if (shouldApplyBrand && wantsLogo && logoDataUrl) {
-    try {
-      footerLogoBase64 = (
-        await sharp(bufferFromDataUrl(logoDataUrl))
-          .resize(28, 28, {
-            fit: 'contain',
-            background: { r: 0, g: 0, b: 0, alpha: 0 },
-          })
-          .png()
-          .toBuffer()
-      ).toString('base64');
-    } catch (err) {
-      console.warn('Could not process uploaded source-document logo; skipping logo:', err);
+  if (shouldApplyBrand && wantsLogo) {
+    const rawLogoBuf = logoDataUrl ? bufferFromDataUrl(logoDataUrl) : getOfficialLogoBuffer();
+    if (rawLogoBuf) {
+      try {
+        footerLogoBase64 = (
+          await sharp(rawLogoBuf)
+            .resize(28, 28, {
+              fit: 'contain',
+              background: { r: 0, g: 0, b: 0, alpha: 0 },
+            })
+            .png()
+            .toBuffer()
+        ).toString('base64');
+      } catch (err) {
+        console.warn('Could not process source-document logo; skipping logo:', err);
+      }
     }
   }
 

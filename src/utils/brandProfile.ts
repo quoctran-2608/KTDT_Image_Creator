@@ -20,14 +20,14 @@ const LOGO_SIZES = ['small', 'medium', 'large'] as const;
 
 /**
  * The single source of truth for global publishing branding defaults.
- * A real logo is opt-in: the safe default uses the configured brand text only.
+ * Uses official KTDT logo as exclusive server-side watermark.
  */
 export const DEFAULT_BRAND_PROFILE: BrandProfile = {
   enabled: true,
   brand_name: 'Kế Toán Diệu Tâm',
-  logo_url: '',
-  logo_uploaded: false,
-  watermark_mode: 'text_only',
+  logo_url: '/api/brand-logo',
+  logo_uploaded: true,
+  watermark_mode: 'logo_only',
   position: 'bottom-right',
   logo_size: 'medium',
   opacity: 0.85,
@@ -37,9 +37,9 @@ export const DEFAULT_BRAND_PROFILE: BrandProfile = {
   apply_to_source_docs: false,
   default_credit: 'Kế Toán Diệu Tâm',
   show_credit_in_article: false,
-  // Legacy fields are retained for compatibility with existing payloads.
-  show_logo: false,
-  show_brand_name: true,
+  // Official production policy
+  show_logo: true,
+  show_brand_name: false,
   apply_to_featured: true,
   apply_to_ai_inline: true,
 };
@@ -95,9 +95,7 @@ export function normalizeBrandProfile(profile: Partial<BrandProfile> | unknown =
   const apply_to = resolveWatermarkScope(raw);
   const brand_name = stringValue(raw.brand_name, DEFAULT_BRAND_PROFILE.brand_name);
   const rawLogoUrl = stringValue(raw.logo_url);
-  const logo_url = /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(rawLogoUrl)
-    ? rawLogoUrl
-    : '';
+  const logo_url = rawLogoUrl || '/api/brand-logo';
   const padding = Math.max(
     numberValue(raw.padding, numberValue(raw.edge_padding, DEFAULT_BRAND_PROFILE.padding ?? 24)),
     8
@@ -172,11 +170,13 @@ export function clearPersistedBrandProfile(): void {
 }
 
 export function hasUploadedLogo(profile: Pick<BrandProfile, 'logo_url'>): boolean {
-  return /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(profile.logo_url || '');
+  if (!profile.logo_url) return false;
+  if (profile.logo_url === '/api/brand-logo') return true;
+  return /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(profile.logo_url);
 }
 
 /**
- * Resolves the same no-fake-logo behavior used by the server pipeline for UI previews.
+ * Resolves the official logo watermark behavior for UI previews.
  */
 export function resolveBrandWatermark(profile: BrandProfile): ResolvedBrandWatermark {
   const enabled = profile.enabled !== false && profile.watermark_mode !== 'none';
@@ -192,11 +192,7 @@ export function resolveBrandWatermark(profile: BrandProfile): ResolvedBrandWater
     showLogo,
     showBrandName,
     isApplied: showLogo || showBrandName,
-    usesTextFallback:
-      enabled &&
-      profile.watermark_mode === 'logo_and_text' &&
-      !hasLogo &&
-      showBrandName,
+    usesTextFallback: false,
   };
 }
 

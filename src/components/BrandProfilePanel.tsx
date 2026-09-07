@@ -148,123 +148,46 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Brand Identity & Mode */}
         <div className="lg:col-span-7 space-y-5">
-          {/* Section A & B: Logo & Brand Name */}
+          {/* Section A & B: Logo & Brand Identity (Official read-only) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-xs">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-teal-600" />
-              Nhận diện &amp; Logo thương hiệu
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-teal-600" />
+                Nhận diện &amp; Logo thương hiệu chính thức
+              </h4>
+              <span className="text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 rounded-full">
+                Hệ thống tự động
+              </span>
+            </div>
 
-            {/* Logo Upload Box */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 relative group">
-                {brandProfile.logo_url ? (
-                  <img
-                    src={brandProfile.logo_url}
-                    alt="Logo thương hiệu"
-                    className="max-w-full max-h-full object-contain p-2"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
-                    <ImageIcon className="w-6 h-6 mb-1 text-slate-300" />
-                    <span className="text-[10px] font-medium text-slate-400">Chưa có logo thương hiệu</span>
-                  </div>
-                )}
+            {/* Official Logo Display Box (Read-only) */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/70">
+              <div className="w-24 h-20 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs p-1.5">
+                <img
+                  src="/api/brand-logo"
+                  alt="Logo Kế Toán Diệu Tâm"
+                  className="max-w-full max-h-full object-contain"
+                />
               </div>
 
-              <div className="flex-1 space-y-2">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/png,image/svg+xml,image/webp"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                  id="brand-logo-file-input"
-                />
-
+              <div className="flex-1 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-8 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-semibold text-xs text-slate-800 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5 text-teal-600" />
-                    <span>{logoUploaded ? 'Thay đổi logo' : 'Tải logo PNG / SVG / WebP'}</span>
-                  </button>
-
-                  {logoUploaded && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveLogo}
-                      className="h-8 px-2.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 font-semibold text-xs text-red-700 flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Xóa logo tùy chỉnh"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Xóa logo</span>
-                    </button>
-                  )}
+                  <span className="text-sm font-bold text-slate-900">Kế Toán Diệu Tâm</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-100 text-teal-800">
+                    Logo chính thức
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800">
+                    Watermark tự động
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-200 text-slate-800">
+                    Áp dụng cho tất cả ảnh
+                  </span>
                 </div>
-
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  {logoUploaded ? (
-                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Đang sử dụng logo tùy chỉnh của bạn (được bảo toàn tỉ lệ khi đóng dấu).
-                    </span>
-                  ) : (
-                    'Chưa có logo thương hiệu. Bạn có thể dùng watermark tên thương hiệu hoặc tải PNG, SVG, WebP để đóng dấu logo thật.'
-                  )}
+                <p className="text-[11px] text-slate-600 leading-normal">
+                  Hệ thống sử dụng logo chính thức nền trong suốt (biểu tượng và chữ “Kế Toán Diệu Tâm”) đóng dấu tự động server-side cho ảnh bìa (Featured) và ảnh minh họa (Inline). Không cần tải logo thủ công.
                 </p>
               </div>
             </div>
-
-            {/* Brand Name Input */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-800">
-                  Tên thương hiệu xuất bản (Tùy chọn nếu logo đã có sẵn chữ)
-                </label>
-                {brandProfile.brand_name ? (
-                  <span className="text-[10px] text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded-md">
-                    Có tên thương hiệu
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded-md">
-                    Chỉ dùng biểu trưng logo
-                  </span>
-                )}
-              </div>
-              <input
-                type="text"
-                value={brandProfile.brand_name ?? ''}
-                onChange={(e) =>
-                  updateProfile({
-                    brand_name: e.target.value,
-                  })
-                }
-                placeholder="Kế Toán Diệu Tâm"
-                className="w-full px-3.5 py-2 text-xs font-medium rounded-xl border border-slate-300 bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
-              />
-              <p className="text-[11px] text-slate-500 mt-1 leading-normal">
-                💡 <em>Nếu file logo bạn vừa tải lên đã chứa sẵn tên thương hiệu dạng hình ảnh, bạn có thể để trống ô này để hệ thống chỉ đóng dấu logo mà không thêm chữ lặp lại.</em>
-              </p>
-            </div>
-
-            {currentMode === 'logo_only' && !logoUploaded && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
-                <strong>Bạn cần tải logo trước khi dùng chế độ Chỉ logo.</strong> Hệ thống sẽ không tự tạo hoặc dùng logo giả.
-              </div>
-            )}
-            {currentMode === 'logo_and_text' && !logoUploaded && resolvedWatermark.showBrandName && (
-              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-[11px] text-sky-900 leading-relaxed">
-                Chưa có logo; hệ thống tạm dùng tên thương hiệu làm watermark chữ.
-              </div>
-            )}
-            {currentMode === 'logo_and_text' && !logoUploaded && !resolvedWatermark.showBrandName && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
-                Chưa có logo và tên thương hiệu đang trống, nên ảnh sẽ không nhận watermark.
-              </div>
-            )}
           </div>
 
           {/* Section C: Watermark Mode */}
@@ -632,93 +555,21 @@ export const BrandProfilePanel: React.FC<BrandProfilePanelProps> = ({
                 </p>
               </div>
 
-              {/* Dynamic Watermark Badge */}
-              {resolvedWatermark.isApplied && (
-                <div
-                  className="absolute z-20 pointer-events-none transition-all duration-200 flex items-center"
-                  style={{
-                    ...(currentPosition === 'bottom-right' && {
-                      bottom: `${currentPadding / 2}px`,
-                      right: `${currentPadding / 2}px`,
-                    }),
-                    ...(currentPosition === 'bottom-left' && {
-                      bottom: `${currentPadding / 2}px`,
-                      left: `${currentPadding / 2}px`,
-                    }),
-                    ...(currentPosition === 'bottom-center' && {
-                      bottom: `${currentPadding / 2}px`,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                    }),
-                    ...(currentPosition === 'top-right' && {
-                      top: `${currentPadding / 2}px`,
-                      right: `${currentPadding / 2}px`,
-                    }),
-                    ...(currentPosition === 'top-left' && {
-                      top: `${currentPadding / 2}px`,
-                      left: `${currentPadding / 2}px`,
-                    }),
-                  }}
-                >
-                  <div
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/20 shadow-lg backdrop-blur-xs"
-                    style={{
-                      backgroundColor: `rgba(15, 23, 42, ${currentOpacity * 0.95})`,
-                    }}
-                  >
-                    {resolvedWatermark.showLogo && (
-                      <div
-                        className="rounded-md overflow-hidden shrink-0 flex items-center justify-center bg-white/10"
-                        style={{
-                          width:
-                            currentLogoSize === 'small'
-                              ? '18px'
-                              : currentLogoSize === 'large'
-                              ? '26px'
-                              : '22px',
-                          height:
-                            currentLogoSize === 'small'
-                              ? '18px'
-                              : currentLogoSize === 'large'
-                              ? '26px'
-                              : '22px',
-                        }}
-                      >
-                        <img
-                          src={brandProfile.logo_url}
-                          alt="Watermark logo"
-                          className="max-w-full max-h-full object-contain"
-                        />
-                      </div>
-                    )}
-
-                    {resolvedWatermark.showBrandName && (
-                        <span
-                          className="font-semibold text-white tracking-wide truncate max-w-[160px]"
-                          style={{
-                            fontSize:
-                              currentLogoSize === 'small'
-                                ? '10px'
-                                : currentLogoSize === 'large'
-                                ? '12px'
-                                : '11px',
-                            opacity: currentOpacity,
-                          }}
-                        >
-                          {brandProfile.brand_name}
-                        </span>
-                      )}
-                  </div>
-                </div>
-              )}
-
-              {!resolvedWatermark.isApplied && (
-                <div className="absolute bottom-3 right-3 z-20 bg-slate-900/80 text-slate-400 text-[10px] px-2 py-1 rounded-md border border-slate-700">
-                  {currentMode === 'logo_only' && !logoUploaded
-                    ? 'Cần tải logo để đóng dấu'
-                    : 'Watermark đã tắt'}
-                </div>
-              )}
+              {/* Dynamic Official Logo Overlay */}
+              <div
+                className="absolute z-20 pointer-events-none transition-all duration-200"
+                style={{
+                  bottom: `${Math.max(12, currentPadding / 2)}px`,
+                  right: `${Math.max(12, currentPadding / 2)}px`,
+                }}
+              >
+                <img
+                  src="/api/brand-logo"
+                  alt="Logo chính thức Kế Toán Diệu Tâm"
+                  className="h-9 sm:h-11 w-auto object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                  style={{ opacity: currentOpacity }}
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
