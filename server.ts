@@ -1158,6 +1158,7 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
 
     return res.json({
       title,
+      effective_article_title: effectiveArticleTitle,
       excerpt,
       slug,
       content_container_selector: contentSelector,
