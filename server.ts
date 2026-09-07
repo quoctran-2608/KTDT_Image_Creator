@@ -32,6 +32,7 @@ import {
 } from './server/brandPipeline';
 import {
   safeFetchHtml,
+  safeFetchImageBuffer,
   parseLiveArticleHtml,
   discoverSingleSlotSource,
   inferBaseUrlFromArticleUrl,
@@ -510,7 +511,7 @@ async function fetchImageAsInlineData(
  */
 app.post('/api/analyze-article', async (req, res) => {
   try {
-    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl, articleTitle } = req.body;
+    const { htmlSource, articleUrl: rawArticleUrl, baseUrl: rawBaseUrl } = req.body;
     if (!htmlSource || typeof htmlSource !== 'string') {
       return res.status(400).json({ error: 'Nguồn mã HTML không hợp lệ hoặc đang để trống.' });
     }
@@ -523,7 +524,6 @@ app.post('/api/analyze-article', async (req, res) => {
 
     // Step 1: Parse HTML and extract structure & inline images
     const parsed = parseArticleHtml(htmlSource);
-    const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : parsed.title;
     const { title, excerpt, slug, contentSelector, images, featuredImageInfo } = parsed;
 
     // Build default slots from extracted images
@@ -670,7 +670,7 @@ Nhiệm vụ: Phân tích bài viết và xây dựng kế hoạch phân loại,
 1. Bằng chứng ngữ cảnh văn bản (tiêu đề, heading mục, đoạn văn xung quanh, src, alt).
 2. Bằng chứng thị giác thực tế (xem trực tiếp nội dung các bức ảnh đính kèm nếu có).
 
-Tiêu đề bài viết: "${effectiveArticleTitle}"
+Tiêu đề bài viết: "${title}"
 Tóm tắt: "${excerpt || 'Không có'}"
 Slug: "${slug}"
 
@@ -792,7 +792,7 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
                 featured_alt: { type: Type.STRING },
                 featured_title: { type: Type.STRING },
                 featured_caption: { type: Type.STRING },
-                featured_cover_caption: { type: Type.STRING, description: 'Vietnamese text (5-10 words) to render on the cover image based on the article topic' },
+                featured_cover_caption: { type: Type.STRING },
                 inline_updates: {
                   type: Type.ARRAY,
                   items: {
@@ -843,6 +843,7 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
                 'featured_alt',
                 'featured_title',
                 'featured_caption',
+                'featured_cover_caption',
                 'inline_updates',
               ],
             },
@@ -1187,7 +1188,7 @@ async function validateGeneratedHeadline(
     const data = match[2];
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash',
+      model: 'gemini-3.5-flash',
       contents: [
         {
           role: 'user',
@@ -1312,7 +1313,22 @@ ${negativeConstraints}`;
     if (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none') {
       let refDataUrl = slot.reference_image.data_url;
       if (!refDataUrl && slot.reference_image.choice === 'current_source') {
-        refDataUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
+        const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
+        if (potentialUrl && potentialUrl.startsWith('data:')) {
+          refDataUrl = potentialUrl;
+        } else if (potentialUrl && potentialUrl.startsWith('http')) {
+          try {
+            const fetched = await safeFetchImageBuffer(potentialUrl);
+            if (fetched && fetched.buffer) {
+               refDataUrl = `data:${fetched.mimeType};base64,${fetched.buffer.toString('base64')}`;
+            } else {
+               refDataUrl = undefined;
+            }
+          } catch (err) {
+            console.warn(`Could not fetch reference image from ${potentialUrl}, skipping reference.`, err);
+            refDataUrl = undefined;
+          }
+        }
       }
 
       if (refDataUrl && refDataUrl.startsWith('data:')) {

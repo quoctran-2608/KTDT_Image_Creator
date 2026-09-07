@@ -128,6 +128,7 @@ export default function App() {
   const handleSelectSample = (sample: SampleArticle) => {
     setHtmlSource(sample.html);
     setArticleUrl(sample.url || '');
+    setArticleTitle('');
     setBaseUrl('');
     setAnalysis(null);
     setPlan([]);
@@ -167,6 +168,7 @@ export default function App() {
     if (isBusy) return;
     setHtmlSource('');
     setArticleUrl('');
+    setArticleTitle('');
     setBaseUrl('');
     setAnalysis(null);
     setPlan([]);
@@ -486,10 +488,10 @@ export default function App() {
           let brandApplied = false;
 
           if (useMockMode) {
-            imageDataUrl = generateClientMockSvg(currentSlot, analysis?.title);
+            imageDataUrl = generateClientMockSvg(currentSlot, analysis?.effective_article_title || analysis?.title);
             promptSummary = `Ảnh minh họa mẫu (Demo): ${currentSlot.suggested_concept}`;
           } else {
-            const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : (analysis?.title || 'Bài viết kinh tế thuế');
+            const effectiveArticleTitle = analysis?.effective_article_title || analysis?.title || 'Bài viết kinh tế thuế';
             const response = await fetch('/api/generate-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -657,10 +659,10 @@ export default function App() {
       let brandApplied = false;
 
       if (useMockMode) {
-        imageDataUrl = generateClientMockSvg(slotToProcess, analysis?.title);
+        imageDataUrl = generateClientMockSvg(slotToProcess, analysis?.effective_article_title || analysis?.title);
         promptSummary = `Ảnh minh họa mẫu (Demo): ${slotToProcess.suggested_concept}`;
       } else {
-        const effectiveArticleTitle = (articleTitle && articleTitle.trim()) ? articleTitle.trim() : (analysis?.title || 'Bài viết kinh tế thuế');
+        const effectiveArticleTitle = analysis?.effective_article_title || analysis?.title || 'Bài viết kinh tế thuế';
         const response = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -816,7 +818,7 @@ export default function App() {
 
   const manifest: ImageManifest | null = analysis
     ? {
-        article_title: analysis.title,
+        article_title: analysis.effective_article_title || analysis.title,
         article_slug: analysis.slug,
         article_url: analysis.article_url || articleUrl || undefined,
         base_url: analysis.base_url || baseUrl || undefined,
@@ -918,6 +920,7 @@ export default function App() {
             onClear={() => {
               setHtmlSource('');
               setArticleUrl('');
+              setArticleTitle('');
               setBaseUrl('');
               setAnalysis(null);
               setPlan([]);

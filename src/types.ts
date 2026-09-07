@@ -203,6 +203,7 @@ export interface SourceDiscoverySummaryItem {
 
 export interface ArticleAnalysis {
   title: string;
+  effective_article_title?: string;
   excerpt: string;
   slug: string;
   content_container_selector: string;

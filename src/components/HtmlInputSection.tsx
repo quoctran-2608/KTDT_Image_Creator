@@ -138,7 +138,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
             </div>
 
             <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-              {analysis.title || 'Bài viết đã biên tập'}
+              {analysis.effective_article_title || analysis.title || 'Bài viết đã biên tập'}
             </h2>
 
             {/* Counts & Diagnostic Link */}
