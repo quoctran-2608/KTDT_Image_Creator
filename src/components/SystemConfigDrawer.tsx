@@ -154,6 +154,16 @@ export const SystemConfigDrawer: React.FC<SystemConfigDrawerProps> = ({
 
           {/* Form Fields */}
           <form onSubmit={handleSave} className="space-y-4">
+            {status?.read_only && (
+              <div className="p-3 bg-teal-50/70 rounded-xl border border-teal-200 text-xs text-teal-900 flex items-start gap-2">
+                <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold block">Cấu hình được quản lý bởi máy chủ (Server Authority)</span>
+                  Ứng dụng đang chạy ở chế độ triển khai dùng chung. Thông số Google Cloud và Vertex AI được nạp tự động qua biến môi trường của chủ sở hữu (Owner). Người dùng không cần và không thể chỉnh sửa các thông số này.
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-semibold text-slate-800 mb-1">
                 Google Cloud Project ID
@@ -162,8 +172,9 @@ export const SystemConfigDrawer: React.FC<SystemConfigDrawerProps> = ({
                 type="text"
                 value={projectIdInput}
                 onChange={(e) => setProjectIdInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="Ví dụ: my-gcp-project-id"
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
               <p className="text-[11px] text-slate-400 mt-1">
                 {hasProject ? 'Đã liên kết Project ID.' : 'Bắt buộc để tính cước dịch vụ qua tài khoản Google Cloud của cơ quan.'}
@@ -178,8 +189,9 @@ export const SystemConfigDrawer: React.FC<SystemConfigDrawerProps> = ({
                 type="text"
                 value={locationInput}
                 onChange={(e) => setLocationInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="global, us-central1, asia-east1"
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
               <p className="text-[11px] text-slate-400 mt-1">
                 Mặc định khuyến nghị: <code>global</code>
@@ -194,8 +206,9 @@ export const SystemConfigDrawer: React.FC<SystemConfigDrawerProps> = ({
                 type="text"
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="gemini-3.1-flash-image"
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#0F766E] focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
               <p className="text-[11px] text-slate-400 mt-1">
                 Mặc định: <code>gemini-3.1-flash-image</code>
@@ -210,14 +223,21 @@ export const SystemConfigDrawer: React.FC<SystemConfigDrawerProps> = ({
             )}
 
             <div className="pt-2 flex items-center gap-2">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="flex-1 h-10 rounded-xl bg-[#0F766E] hover:bg-[#115E59] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{isSaving ? 'Đang lưu...' : 'Lưu cấu hình'}</span>
-              </button>
+              {status?.read_only ? (
+                <div className="flex-1 h-10 rounded-xl bg-slate-100 text-slate-500 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-200">
+                  <ShieldCheck className="w-4 h-4 text-teal-700" />
+                  <span>Cấu hình tự động bởi máy chủ</span>
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 h-10 rounded-xl bg-[#0F766E] hover:bg-[#115E59] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSaving ? 'Đang lưu...' : 'Lưu cấu hình'}</span>
+                </button>
+              )}
 
               <button
                 type="button"

@@ -230,6 +230,7 @@ export interface VertexConfigStatus {
   credential_source: string;
   is_ready: boolean;
   status_message?: string;
+  read_only?: boolean;
 }
 
 export interface ManifestSlotItem {

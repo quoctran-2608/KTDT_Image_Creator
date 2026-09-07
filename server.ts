@@ -111,8 +111,7 @@ const EDITORIAL_EXPORT_BUCKET = process.env.EDITORIAL_EXPORT_BUCKET?.trim() || '
 const editorialExportStorage = EDITORIAL_EXPORT_BUCKET ? new Storage() : null;
 const isCloudRun = Boolean(process.env.K_SERVICE);
 const isBuiltCloudRun = isCloudRun && hasBuiltFrontend;
-const requiresEditorialExportBucket =
-  hasBuiltFrontend && (isBuiltCloudRun || process.env.NODE_ENV === 'production');
+const requiresEditorialExportBucket = hasBuiltFrontend;
 const editorialExportAssets = new Map<
   string,
   {
@@ -285,10 +284,13 @@ function getVertexReadiness() {
     credentials_detected: creds.detected,
     credential_source: creds.source,
     is_ready: isReady,
+    read_only: hasBuiltFrontend,
     status_message: isReady
-      ? 'Hệ thống Vertex AI đã sẵn sàng tạo ảnh.'
+      ? (hasBuiltFrontend
+          ? 'Hệ thống Vertex AI đã sẵn sàng (Server-side ADC).'
+          : 'Hệ thống Vertex AI đã sẵn sàng tạo ảnh.')
       : !hasProject
-      ? 'Chưa thể tạo ảnh: cấu hình Vertex AI hoặc thông tin xác thực chưa sẵn sàng (Thiếu Project ID).'
+      ? 'Chưa thể tạo ảnh: cấu hình Vertex AI hoặc thông tin xác thực chưa sẵn sàng (Thiếu Project ID trên server).'
       : 'Chưa thể tạo ảnh: cấu hình Vertex AI hoặc thông tin xác thực chưa sẵn sàng.',
   };
 }
@@ -378,6 +380,16 @@ app.get('/api/vertex-status', (req, res) => {
 
 // Vertex AI configuration update endpoint (allows setting project/location/model for the session)
 app.post('/api/vertex-config', (req, res) => {
+  // Built production deployment: locking server-managed configuration to prevent public users from mutating shared settings
+  if (hasBuiltFrontend) {
+    return res.status(403).json({
+      error:
+        'Cấu hình Vertex AI được quản lý tập trung ở phía máy chủ bởi Quản trị viên (Owner). Không thể thay đổi trong môi trường production.',
+      read_only: true,
+      config: getVertexReadiness(),
+    });
+  }
+
   const { projectId, location, model } = req.body;
   if (typeof projectId === 'string') {
     serverVertexConfig.projectId = projectId.trim();
@@ -1492,7 +1504,7 @@ app.post('/api/generate-mock-image', async (req, res) => {
 
 // Start Express Server with Vite middleware
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (!hasBuiltFrontend) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

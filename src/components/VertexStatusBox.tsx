@@ -209,8 +209,9 @@ export const VertexStatusBox: React.FC<VertexStatusBoxProps> = ({
                 type="text"
                 value={projectIdInput}
                 onChange={(e) => setProjectIdInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="Ví dụ: my-gcp-project-id"
-                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white"
+                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -222,8 +223,9 @@ export const VertexStatusBox: React.FC<VertexStatusBoxProps> = ({
                 type="text"
                 value={locationInput}
                 onChange={(e) => setLocationInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="global, us-central1, asia-east1"
-                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white"
+                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -235,31 +237,41 @@ export const VertexStatusBox: React.FC<VertexStatusBoxProps> = ({
                 type="text"
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
+                disabled={status?.read_only}
                 placeholder="gemini-3.1-flash-image"
-                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white"
+                className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-600 focus:border-transparent bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
             </div>
 
             <div className="sm:col-span-3 flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setProjectIdInput(status?.project_id || '');
-                  setLocInput: setLocationInput(status?.location || 'global');
-                  setModelInput(status?.model || 'gemini-3.1-flash-image');
-                }}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
-              >
-                Đặt lại
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="px-4 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{isSaving ? 'Đang lưu...' : 'Lưu & Cập nhật phiên'}</span>
-              </button>
+              {status?.read_only ? (
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
+                  <span>Cấu hình tự động bởi máy chủ (Server Authority)</span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectIdInput(status?.project_id || '');
+                      setLocationInput(status?.location || 'global');
+                      setModelInput(status?.model || 'gemini-3.1-flash-image');
+                    }}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                  >
+                    Đặt lại
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="px-4 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSaving ? 'Đang lưu...' : 'Lưu & Cập nhật phiên'}</span>
+                  </button>
+                </>
+              )}
             </div>
           </form>
 
