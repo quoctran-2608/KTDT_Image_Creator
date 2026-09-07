@@ -49,6 +49,9 @@ const __dirnameResolved =
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const distPath = path.join(process.cwd(), 'dist');
+const distIndexPath = path.join(distPath, 'index.html');
+const hasBuiltFrontend = fs.existsSync(distIndexPath);
 
 // Body parser with 50mb limit to handle large HTML sources and base64 images
 app.use(express.json({ limit: '50mb' }));
@@ -107,7 +110,9 @@ const EDITORIAL_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
 const EDITORIAL_EXPORT_BUCKET = process.env.EDITORIAL_EXPORT_BUCKET?.trim() || '';
 const editorialExportStorage = EDITORIAL_EXPORT_BUCKET ? new Storage() : null;
 const isCloudRun = Boolean(process.env.K_SERVICE);
-const isProduction = process.env.NODE_ENV === 'production' || isCloudRun;
+const isBuiltCloudRun = isCloudRun && hasBuiltFrontend;
+const requiresEditorialExportBucket =
+  hasBuiltFrontend && (isBuiltCloudRun || process.env.NODE_ENV === 'production');
 const editorialExportAssets = new Map<
   string,
   {
@@ -324,7 +329,7 @@ app.post('/api/editorial-export-assets', async (req, res) => {
       const registered = await registerEditorialAssetsInCloudStorage(assets);
       return res.json({ success: true, transport: 'gcs', assets: registered });
     }
-    if (isProduction) {
+    if (requiresEditorialExportBucket) {
       return res.status(503).json({
         error:
           'Editorial export chưa sẵn sàng trên production: cần cấu hình EDITORIAL_EXPORT_BUCKET cho Cloud Storage.',
@@ -343,10 +348,10 @@ app.post('/api/editorial-export-assets', async (req, res) => {
 });
 
 /**
- * Development-only fallback for temporary in-memory assets. Production uses Cloud Storage signed URLs.
+ * Source preview fallback for temporary in-memory assets. Built deployments use Cloud Storage signed URLs.
  */
 app.get('/api/editorial-image/:token', (req, res) => {
-  if (editorialExportStorage || isProduction) {
+  if (editorialExportStorage || requiresEditorialExportBucket) {
     return res.status(404).send('Không tìm thấy ảnh tạm.');
   }
   cleanupEditorialExportAssets();
@@ -1487,17 +1492,16 @@ app.post('/api/generate-mock-image', async (req, res) => {
 
 // Start Express Server with Vite middleware
 async function startServer() {
-  if (!isProduction) {
+  if (!hasBuiltFrontend) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(distIndexPath);
     });
   }
 

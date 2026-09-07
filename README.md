@@ -40,8 +40,8 @@ Sau khi mọi ảnh đã hoàn tất ở Bước 3, nút **COPY CHO EDITORIAL** 
 ### Cloud Run transport
 
 - Production cần `EDITORIAL_EXPORT_BUCKET=<bucket-name>`. Image Creator dùng Application Default Credentials/service identity của Cloud Run để upload object tạm dưới `editorial-export/<export-uuid>/<asset-uuid>-<safe-filename>.webp`.
-- Server nhận diện Cloud Run bằng `K_SERVICE` và luôn listen theo `process.env.PORT` (local fallback là `3000`).
+- Server luôn listen theo `process.env.PORT` (local fallback là `3000`). Frontend dùng Vite khi không có `dist/index.html`, kể cả AI Studio Preview có `K_SERVICE`; built Cloud Run (`K_SERVICE` + `dist/index.html`) dùng static frontend và bắt buộc bucket.
 - Mỗi URL là signed `GET` URL có hạn 24 giờ; URL không phụ thuộc instance Node/Cloud Run đã nhận yêu cầu Copy.
 - Cấu hình lifecycle rule trên bucket để tự xóa prefix `editorial-export/` sau thời hạn phù hợp (ví dụ 1–2 ngày). Đây là cấu hình Google Cloud ngoài code.
 - Service account Cloud Run cần quyền ghi/xóa object trong bucket và quyền ký URL V4 (thường cần `iam.serviceAccounts.signBlob`/Service Account Token Creator tùy cấu hình IAM).
-- Nếu production thiếu `EDITORIAL_EXPORT_BUCKET`, Copy bị từ chối rõ ràng thay vì rơi về memory. Memory fallback chỉ dùng khi không chạy production và mất khi server restart.
+- Nếu built deployment thiếu `EDITORIAL_EXPORT_BUCKET`, Copy bị từ chối rõ ràng thay vì rơi về memory. Source preview không có `dist/index.html` có thể dùng memory fallback và URL sẽ mất khi server restart.
