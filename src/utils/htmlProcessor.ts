@@ -300,8 +300,8 @@ export function isDocumentOrTableVisual(slot: {
 export function buildDocumentTablePrompt(topic: string): { concept: string; generation_prompt: string } {
   const cleanTopic = topic.replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '').trim() || 'nghiệp vụ kế toán';
   return {
-    concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${cleanTopic.toLowerCase()}. Thiết kế mẫu hóa đơn/chứng từ tinh gọn được trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`,
-    generation_prompt: `Clean professional Vietnamese accounting editorial illustration and explainer visual about ${cleanTopic.toLowerCase()}. Show a newly designed simplified invoice/document sheet together with a structured accounting table containing clear rows, columns and adjustment blocks. The visual should immediately communicate invoice adjustment and bookkeeping, while using a completely new composition and not reproducing the original document, company information or exact figures.`,
+    concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${cleanTopic.toLowerCase()}. Thiết kế mẫu chứng từ/bảng biểu kế toán trung tính, không chứa bất kỳ logo, thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`,
+    generation_prompt: `Clean professional Vietnamese accounting editorial illustration and explainer visual about ${cleanTopic.toLowerCase()}. Show a generic, unbranded invoice or accounting document sheet together with a structured accounting table containing clear rows, columns and adjustment blocks. Generic invoice/document/table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder. The visual communicates invoice adjustment and bookkeeping using a completely new composition and neutral visual elements, without reproducing any original document layout, company identity or exact figures.`,
   };
 }
 

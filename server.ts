@@ -510,6 +510,43 @@ async function fetchImageAsInlineData(
   }
 }
 
+export const SOURCE_BRANDING_REMOVAL_DIRECTIVE = `\n\nSOURCE BRANDING REMOVAL:
+- Ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks, lettermarks and trademark-like symbols visible in any source/reference image.
+- Do NOT reproduce, imitate, redraw, stylize or approximate them.
+- Do NOT invent a similar substitute logo.
+- Replace branded elements with neutral, generic, unbranded visuals.
+- Documents, screens, laptops, forms, products and interfaces must contain no identifiable brand/logo inherited from the source.
+- Preserve only subject meaning, never source branding.`;
+
+export const DOC_TABLE_BRANDING_DIRECTIVE = `\n\nDOCUMENT/TABLE VISUAL BRANDING RULES:
+- Generic invoice/document/table only
+- NO company logo
+- NO government-style emblem
+- NO seal/stamp
+- NO brand name
+- NO fake logo placeholder`;
+
+/**
+ * Ensures analyzer output and visual concepts do not carry detected source branding into positive generation instructions.
+ * If a prompt or concept mentions logos, brands, emblems, or seals from source imagery, strips or neutralizes them.
+ */
+export function sanitizeBrandingPrompt(text: string): string {
+  if (!text) return '';
+  let cleaned = text;
+
+  // English phrases describing positive generation or inclusion of logos/brands/emblems/seals
+  cleaned = cleaned.replace(/\b(featuring|displaying|showing|bearing|including|incorporating|with|has)\s+(a\s+|the\s+)?(company|corporate|brand|organization|client|bank)?\s*(logo|brand name|brand identity|emblem|badge|seal|stamp|watermark|lettermark|trademark)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(reproduce|recreate|draw|include|render|show|display)\s+(the\s+)?(source\s+|original\s+)?(logo|branding|brand name|emblem|seal|stamp)[^.,;\n]*/gi, '');
+  
+  // Vietnamese phrases describing positive generation or inclusion of logos/brands/emblems/seals
+  cleaned = cleaned.replace(/\b(kèm theo|hiển thị|chứa|có|mang|thể hiện|giữ lại|tái hiện)\s+(logo|thương hiệu|nhãn hiệu|biểu tượng|con dấu|mộc đỏ|huy hiệu)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(logo|thương hiệu|nhãn hiệu|con dấu|mộc đỏ)\s+(của|từ|trên)\s+(ảnh gốc|công ty|doanh nghiệp|tài liệu|ngân hàng)[^.,;\n]*/gi, '');
+
+  // Clean up any double spaces or awkward punctuation left over
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').replace(/\s+([,.;])/g, '$1').trim();
+  return cleaned;
+}
+
 /**
  * 1. Analyze Article HTML and build the Image Plan
  */
@@ -696,9 +733,15 @@ Phân tích thị giác (Nếu có ảnh đính kèm):
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
 3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 
+QUY TẮC BẮT BUỘC VỀ THƯƠNG HIỆU & LOGO NGUỒN (SOURCE BRANDING REMOVAL):
+- Nếu phát hiện logo, tên thương hiệu, nhãn hàng, con dấu, watermark, biểu tượng của tổ chức/doanh nghiệp trong ảnh nguồn: coi đó là thành phần cần loại bỏ hoàn toàn, TUYỆT ĐỐI KHÔNG mang vào ý tưởng tạo ảnh mới.
+- KHÔNG đưa tên thương hiệu, mô tả logo, nhãn hiệu, huy hiệu, con dấu từ ảnh gốc vào "featured_concept", "featured_generation_prompt" hay các trường metadata.
+- Mọi hình ảnh và đối tượng đề xuất phải trung tính, không mang nhãn hiệu (unbranded, generic).
+- Với tài liệu/hóa đơn/bảng biểu: chỉ đề xuất mẫu trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giả logo.
+
 YÊU CẦU:
-- featured_concept: Ý tưởng bằng Tiếng Việt.
-- featured_generation_prompt: Bằng Tiếng Anh. Nếu có ảnh gốc đính kèm và không nhạy cảm, viết prompt dựa trên ý nghĩa của ảnh gốc nhưng tạo bố cục hoàn toàn mới.
+- featured_concept: Ý tưởng bằng Tiếng Việt (trung tính, không chứa thương hiệu từ ảnh gốc).
+- featured_generation_prompt: Bằng Tiếng Anh. Nếu có ảnh gốc đính kèm và không nhạy cảm, viết prompt dựa trên ý nghĩa của ảnh gốc nhưng tạo bố cục hoàn toàn mới, loại bỏ toàn bộ logo/thương hiệu của ảnh gốc.
 - featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt ngắn gọn.
 - featured_alt, featured_title, featured_caption: Theo quy chuẩn báo chí.
 - enable_text_in_image: true (vì ảnh bìa luôn có text) hoặc dựa trên ảnh gốc.
@@ -745,8 +788,8 @@ YÊU CẦU:
           const targetSlot = slots[0];
           if (targetSlot) {
             const hasVisual = slotImageBuffers.has('feature-1');
-            targetSlot.suggested_concept = result.featured_concept || targetSlot.suggested_concept;
-            targetSlot.generation_prompt = result.featured_generation_prompt || targetSlot.generation_prompt;
+            targetSlot.suggested_concept = sanitizeBrandingPrompt(result.featured_concept || targetSlot.suggested_concept);
+            targetSlot.generation_prompt = sanitizeBrandingPrompt(result.featured_generation_prompt || targetSlot.generation_prompt);
             targetSlot.suggested_alt = result.featured_alt || targetSlot.suggested_alt;
             targetSlot.title = result.featured_title;
             targetSlot.caption = result.featured_caption;
@@ -795,23 +838,28 @@ QUY TẮC:
 1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice", "table", "spreadsheet", "financial_statement").
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, screenshot phần mềm chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
 3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
-4. Xác định "classification":
+4. QUY TẮC BẮT BUỘC VỀ THƯƠNG HIỆU & LOGO NGUỒN (SOURCE BRANDING REMOVAL):
+   - TUYỆT ĐỐI KHÔNG mang bất kỳ logo, thương hiệu công ty, nhãn hiệu, biểu tượng, con dấu (seal/stamp), huy hiệu nào từ ảnh nguồn vào "concept" hay "generation_prompt". Coi đó là chi tiết phải loại bỏ hoàn toàn.
+   - Thay thế mọi chi tiết thương hiệu bằng hình ảnh công sở hoặc tài liệu kế toán trung tính, không gắn nhãn hiệu.
+   - Với tài liệu/hóa đơn/bảng biểu: chỉ tạo dạng biểu mẫu/bảng biểu giải thích trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giữ chỗ logo giả.
+5. Xác định "classification":
    - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
    - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
    - Nếu mâu thuẫn giữa chữ và ảnh -> MANUAL_REVIEW
-5. Gợi ý concept (Tiếng Việt) và generation_prompt (Tiếng Anh) cho chiến lược GENERATE_AI:
+6. Gợi ý concept (Tiếng Việt) và generation_prompt (Tiếng Anh) cho chiến lược GENERATE_AI:
    - NẾU ảnh nguồn thuộc nhóm tài liệu/bảng biểu/hóa đơn/chứng từ/biểu mẫu (visual_type là invoice, accounting document, form, table, spreadsheet, financial statement, structured document, hoặc ảnh chứa bảng dữ liệu/hóa đơn/chứng từ):
      + KHÔNG yêu cầu AI sao chép hóa đơn/tài liệu gốc.
-     + concept (Tiếng Việt): Đề xuất dạng ảnh minh họa đồ họa báo chí kinh tế / explainer visual giải thích nghiệp vụ kế toán về chủ đề liên quan. Thể hiện các yếu tố trực quan như: mẫu chứng từ/hóa đơn tinh gọn, bảng số liệu kế toán có dòng và cột rõ ràng, các khối đối chiếu/điều chỉnh, máy tính cầm tay hoặc bảng tính phù hợp.
-     + generation_prompt (Tiếng Anh): Ưu tiên dạng professional Vietnamese accounting editorial illustration / explainer visual. Ví dụ tinh thần: "Create a clean Vietnamese accounting editorial visual about [chủ đề nghiệp vụ bằng tiếng Anh]. Show a newly designed simplified invoice/document together with a structured accounting table containing clear rows, columns and adjustment blocks. The visual should immediately communicate invoice adjustment and bookkeeping, while using a completely new composition and not reproducing the original document, company information or exact figures."
-     + Ảnh mới phải: khác bố cục tài liệu gốc rõ rệt; không chép nguyên layout; không chép số liệu, tên doanh nghiệp, mã số thuế hoặc nội dung nhạy cảm của hóa đơn gốc; chỉ giữ Ý NGHĨA nghiệp vụ/chủ đề.
+     + concept (Tiếng Việt): Đề xuất dạng ảnh minh họa đồ họa báo chí kinh tế / explainer visual giải thích nghiệp vụ kế toán về chủ đề liên quan. Thể hiện các yếu tố trực quan như: mẫu chứng từ/hóa đơn tinh gọn, bảng số liệu kế toán có dòng và cột rõ ràng, các khối đối chiếu/điều chỉnh, máy tính cầm tay hoặc bảng tính phù hợp. TUYỆT ĐỐI KHÔNG đưa logo, thương hiệu, con dấu vào concept.
+     + generation_prompt (Tiếng Anh): Ưu tiên dạng professional Vietnamese accounting editorial illustration / explainer visual. Ví dụ tinh thần: "Create a clean unbranded Vietnamese accounting editorial visual about [chủ đề nghiệp vụ bằng tiếng Anh]. Show a newly designed generic invoice/document together with a structured accounting table containing clear rows, columns and adjustment blocks. Generic invoice/document/table only, with no company logo, no government emblem, no seal or stamp, no brand name. The visual communicates invoice adjustment and bookkeeping using a new composition and neutral visuals without reproducing the original document, company information or exact figures."
+     + Ảnh mới phải: khác bố cục tài liệu gốc rõ rệt; không chép nguyên layout; không chép số liệu, tên doanh nghiệp, mã số thuế hoặc nội dung nhạy cảm của hóa đơn gốc; chỉ giữ Ý NGHĨA nghiệp vụ/chủ đề; tuyệt đối loại bỏ toàn bộ logo/thương hiệu ảnh gốc.
      + Nếu enable_text_in_image = true: chỉ dùng headline đã được hệ thống chọn (cover_caption), tuyệt đối KHÔNG OCR toàn bộ tài liệu.
    - NẾU ảnh nguồn là người/văn phòng thông thường (photo, office, person):
-     + Giữ phong cách documentary editorial journalism photography: chuyên viên kế toán làm việc tại văn phòng hiện đại ở Việt Nam, ánh sáng tự nhiên từ cửa sổ, ống kính 50mm f/2.8.
-6. Nếu GENERATE_FROM_SOURCE_AI (chỉ áp dụng cho ảnh minh họa/phong cảnh/stock KHÔNG nhạy cảm, KHÔNG phải hóa đơn/tài liệu):
+     + Giữ phong cách documentary editorial journalism photography: chuyên viên kế toán làm việc tại văn phòng hiện đại ở Việt Nam, ánh sáng tự nhiên từ cửa sổ, ống kính 50mm f/2.8, không chứa logo hoặc biểu tượng thương hiệu của ảnh nguồn.
+7. Nếu GENERATE_FROM_SOURCE_AI (chỉ áp dụng cho ảnh minh họa/phong cảnh/stock KHÔNG nhạy cảm, KHÔNG phải hóa đơn/tài liệu):
    - Ý TƯỞNG TẠO ẢNH: AI sẽ tạo MỘT ẢNH MỚI. Ảnh mới phải GIỮ Ý NGHĨA CHÍNH của ảnh cũ, nhưng KHÁC ĐỦ NHIỀU để không bị xem là bắt chước (thay đổi góc máy, bố cục, ánh sáng).
+   - Loại bỏ hoàn toàn logo, thương hiệu, watermark hoặc con dấu xuất hiện trong ảnh nguồn.
    - Nếu ảnh gốc có chữ nổi bật -> "enable_text_in_image: true", và gợi ý lại nội dung chữ trong "cover_caption" (viết lại cho hay, không copy nguyên văn).
-   - "generation_prompt" (Tiếng Anh) phải ghi rõ: "preserve the same core topic, do NOT make a near-duplicate, create a clearly new composition."
+   - "generation_prompt" (Tiếng Anh) phải ghi rõ: "preserve the same core topic, do NOT make a near-duplicate, create a clearly new composition, remove all source logos and watermarks."
 `;
 
           const contentsParts: any[] = [{ text: promptText }];
@@ -902,10 +950,10 @@ QUY TẮC:
             slotObj.confidence = result.confidence || slotObj.confidence;
             slotObj.reason = result.reason || slotObj.reason;
             if (result.concept) {
-              slotObj.suggested_concept = result.concept;
-              slotObj.concept = result.concept;
+              slotObj.suggested_concept = sanitizeBrandingPrompt(result.concept);
+              slotObj.concept = slotObj.suggested_concept;
             }
-            slotObj.generation_prompt = result.generation_prompt || slotObj.generation_prompt;
+            slotObj.generation_prompt = sanitizeBrandingPrompt(result.generation_prompt || slotObj.generation_prompt);
             
             if (result.alt) {
               slotObj.suggested_alt = result.alt;
@@ -1208,11 +1256,12 @@ export async function generateImageWithVertex(
   const contextPara = slot.context_paragraph
     ? `Bối cảnh chi tiết đoạn văn: "${slot.context_paragraph.slice(0, 260)}". `
     : '';
-  const visualConcept =
+  const rawConcept =
     (slot.generation_prompt && slot.generation_prompt.trim()) ||
     slot.concept ||
     slot.suggested_concept ||
     '';
+  const visualConcept = sanitizeBrandingPrompt(rawConcept);
   const orientation = isFeatured
     ? 'Ảnh ngang tỷ lệ rộng 16:9 (Wide 16:9 landscape aspect ratio), bố cục ảnh bìa báo chí'
     : 'Ảnh ngang tỷ lệ chuẩn 4:3 (Standard 4:3 editorial landscape aspect ratio), minh họa trong bài';
@@ -1220,19 +1269,21 @@ export async function generateImageWithVertex(
   const isDocVisual = isDocumentOrTableVisual(slot);
 
   let textRenderingDirective = '';
-  let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+  let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO badges, NO watermarks, NO lettermarks, NO trademark-like symbols, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   
   if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
     textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces or key visual blocks.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
     negativeConstraints = isDocVisual
-      ? 'STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names, real tax identification numbers, or confidential figures. Render ONLY the requested headline text. Do NOT create fake corporate logos, fake watermarks, fake stamps, or government seals. No cartoonish 3D render, no distorted AI artifacts.'
-      : 'STRICT NEGATIVE CONSTRAINTS: Do not create any fake corporate logos. Do not create any fake watermarks. Do not create fake stamps or government seals. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
+      ? 'STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names, real tax identification numbers, or confidential figures. Render ONLY the requested headline text. Do NOT create corporate logos, brand names, watermarks, stamps, seals, government-style emblems, or fake logo placeholders. Generic invoice/document/table only. No cartoonish 3D render, no distorted AI artifacts.'
+      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO corporate logos, brand names, company names, emblems, seals, stamps, badges, watermarks, lettermarks, trademark-like symbols, or fake logo placeholders. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
   } else if (isFeatured || slot.enable_text_in_image === false) {
     // Ensure no text if not enabled
     negativeConstraints = isDocVisual
-      ? 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.'
-      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+      ? 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders. Generic invoice/document/table only. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.'
+      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   }
+
+  const docBrandingExtra = isDocVisual ? DOC_TABLE_BRANDING_DIRECTIVE : '';
 
   let prompt: string;
   if (isDocVisual) {
@@ -1240,9 +1291,9 @@ export async function generateImageWithVertex(
 Topic of article: "${articleTitle || 'Kinh tế, Kế toán và Thuế Việt Nam'}".
 ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
-Key Visual Elements: A newly designed, simplified invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
+Key Visual Elements: A newly designed, simplified generic unbranded invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. Generic invoice, document and table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
 Composition & Visual Style: ${orientation}. Clean modern graphic explainer illustration style with refined typography, balanced layout, professional corporate color palette (teal, navy, slate, warm paper tone). High clarity and sophistication.
-Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}
+Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
 
 ${negativeConstraints}`;
   } else {
@@ -1252,7 +1303,7 @@ ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
 Composition & Aspect Ratio: ${orientation}. Sharp focus on human subjects, realistic documentary editorial style, shot on 50mm f/2.8 lens with shallow depth of field.
 Setting & Atmosphere: Authentic contemporary Vietnamese business office or corporate workspace in Hanoi or Ho Chi Minh City. Natural soft daylight from office windows, minimalist wooden desks, Vietnamese business professionals, modern laptop displaying blurred financial charts.
-Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}
+Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
 
 ${negativeConstraints}`;
   }
@@ -1397,9 +1448,9 @@ ${negativeConstraints}`;
     let referenceGuidance = '';
     if (parts.length > 0) {
       if (isSourceAiStrategy) {
-        referenceGuidance = '\n\nSOURCE RECREATION DIRECTIVE:\n- Preserve the same core meaning/topic\n- Create a genuinely new composition\n- Do NOT create a near-duplicate\n- Do NOT trace the original\n- Do NOT copy the exact layout\n- Change framing/camera angle\n- Change subject arrangement\n- Change background/environment where appropriate\n- Change lighting/mood\n- Use different visual treatment\n- Preserve semantic meaning, not visual duplication';
+        referenceGuidance = '\n\nSOURCE RECREATION DIRECTIVE:\n- Preserve the same core meaning/topic\n- Create a genuinely new composition\n- Do NOT create a near-duplicate\n- Do NOT trace the original\n- Do NOT copy the exact layout\n- Change framing/camera angle\n- Change subject arrangement\n- Change background/environment where appropriate\n- Change lighting/mood\n- Use different visual treatment\n- Preserve semantic meaning, not visual duplication\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the source image. Replace with neutral, generic, unbranded visuals.';
       } else {
-        referenceGuidance = '\n\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.';
+        referenceGuidance = '\n\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the reference image. Replace with neutral, generic, unbranded visuals.';
       }
     }
     parts.push({ text: prompt + variationDirective + referenceGuidance });
