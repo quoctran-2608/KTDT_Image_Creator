@@ -527,21 +527,25 @@ export function getContextualSoftwareBrandDirective(allowedBrands: string[]): st
   const brandList = allowedBrands.join(', ');
   return `\n\nCONTEXTUAL SOFTWARE BRAND TEXT ALLOWANCE:
 - The article subject specifically covers software: ${brandList}.
-- You MAY use the software name (${brandList}) ONLY as contextual editorial text in headlines, cover captions, or workflow labels.
-- Do NOT recreate official software logos, trademark icons, brand emblems, or badges.
-- Do NOT copy screenshots from the original source image pixel-by-pixel.
-- Render clean, stylized generic accounting software interfaces and modern office visuals appropriate for ${brandList} without any official logo marks.`;
+- Allowed contextual software name (${brandList}) from article context MAY appear ONLY as editorial text, headline, or workflow label.
+- NO source company/organization brand names.
+- NO official software logo / brand mark.
+- Never render its official logo or copy original screenshot UI.
+- Render clean, stylized generic accounting software interfaces and modern office visuals appropriate for ${brandList} workflows without any official logo marks.`;
 }
 
 export function getDocTableBrandingDirective(allowedBrands: string[] = []): string {
+  const brandList = allowedBrands.join(', ');
   const brandAllowance =
     allowedBrands.length > 0
-      ? `\n- Permitted software name (${allowedBrands.join(', ')}) from article context may appear ONLY as editorial contextual text or headline, NEVER as a logo or brand mark`
-      : `\n- NO brand name or company name`;
+      ? `\n- Allowed contextual software name (${brandList}) from article context MAY appear ONLY as editorial text, headline, or workflow label.
+- Never render its official logo or copy original screenshot UI.`
+      : '';
 
   return `\n\nDOCUMENT/TABLE/INTERFACE VISUAL BRANDING RULES:
 - Generic invoice/document/table/software interface only
-- NO company logo or official software logo mark
+- NO source company/organization brand names
+- NO official software logo / brand mark
 - NO government-style emblem
 - NO seal/stamp
 - NO fake logo placeholder${brandAllowance}`;
@@ -791,23 +795,25 @@ Phân tích thị giác (Nếu có ảnh đính kèm):
 3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 
 QUY TẮC BẮT BUỘC VỀ THƯƠNG HIỆU & LOGO NGUỒN (SOURCE BRANDING REMOVAL):
-- Nếu phát hiện logo, tên thương hiệu, nhãn hàng, con dấu, watermark, biểu tượng của tổ chức/doanh nghiệp trong ảnh nguồn: coi đó là thành phần cần loại bỏ hoàn toàn, TUYỆT ĐỐI KHÔNG mang vào ý tưởng tạo ảnh mới.
-- KHÔNG đưa tên thương hiệu, mô tả logo, nhãn hiệu, huy hiệu, con dấu từ ảnh gốc vào "featured_concept", "featured_generation_prompt" hay các trường metadata.
-- Mọi hình ảnh và đối tượng đề xuất phải trung tính, không mang nhãn hiệu (unbranded, generic).
-- Với tài liệu/hóa đơn/bảng biểu: chỉ đề xuất mẫu trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giả logo.
+- Nếu phát hiện logo, tên thương hiệu công ty nguồn, nhãn hàng, con dấu, watermark, biểu tượng của tổ chức/doanh nghiệp trong ảnh nguồn: coi đó là thành phần cần loại bỏ hoàn toàn, TUYỆT ĐỐI KHÔNG mang vào ý tưởng tạo ảnh mới.
+- KHÔNG đưa tên thương hiệu công ty nguồn, mô tả logo, nhãn hiệu, huy hiệu, con dấu từ ảnh gốc vào "featured_concept", "featured_generation_prompt" hay các trường metadata.
+- Mọi hình ảnh và đối tượng đề xuất phải trung tính, không mang nhãn hiệu công ty nguồn (unbranded, generic).
+- Với tài liệu/hóa đơn/bảng biểu: chỉ đề xuất mẫu trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu công ty nguồn, KHÔNG có ô giả logo.
 ${allowedSoftwareBrands.length > 0 ? `
 QUY TẮC ĐẶC BIỆT VỀ TÊN PHẦN MỀM LÀ CHỦ ĐỀ BÀI VIẾT:
 - Bài viết có chủ đề về phần mềm: ${allowedSoftwareBrands.join(', ')}.
-- Tên phần mềm (${allowedSoftwareBrands.join(', ')}) ĐƯỢC PHÉP xuất hiện dưới dạng chữ viết (text) trong:
-  + "featured_cover_caption" (ví dụ: "Hướng dẫn hạch toán trên ${allowedSoftwareBrands[0]}")
+- NO source company/organization brand names.
+- NO official software logo / brand mark.
+- Tên phần mềm (${allowedSoftwareBrands.join(', ')}) ĐƯỢC PHÉP xuất hiện CHỈ dưới dạng text/tiêu đề/nhãn nghiệp vụ trong:
+  + "featured_cover_caption" (ví dụ: "Hạch toán giảm giá hàng bán trên ${allowedSoftwareBrands[0]}")
   + "featured_concept", "featured_generation_prompt", "featured_alt", "featured_title", "featured_caption"
-- TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG của ${allowedSoftwareBrands.join(', ')}.
-- Tạo giao diện minh họa hiện đại, trung tính hoặc hình ảnh chuyên viên làm việc chuyên nghiệp, không sao chép nguyên screenshot cũ.` : ''}
+- TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG CHÍNH THỨC của ${allowedSoftwareBrands.join(', ')}.
+- Tuyệt đối không sao chép nguyên screenshot cũ pixel-by-pixel. Tạo giao diện minh họa hiện đại, trung tính hoặc hình ảnh chuyên viên làm việc chuyên nghiệp.` : ''}
 
 YÊU CẦU:
 - featured_concept: Ý tưởng bằng Tiếng Việt (trung tính, không chứa thương hiệu từ ảnh gốc).
 - featured_generation_prompt: Bằng Tiếng Anh. Nếu có ảnh gốc đính kèm và không nhạy cảm, viết prompt dựa trên ý nghĩa của ảnh gốc nhưng tạo bố cục hoàn toàn mới, loại bỏ toàn bộ logo/thương hiệu của ảnh gốc.
-- featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt ngắn gọn.
+- featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt ngắn gọn (khoảng 5-10 từ) súc tích, giữ trọn vẹn ý nghĩa chuyên môn nghiệp vụ kế toán/thuế của bài viết, bảo toàn tên phần mềm chủ đề (ví dụ: "Hạch toán giảm giá hàng bán trên ${allowedSoftwareBrands[0] || 'MISA'}"). Không viết cụt ngủn hoặc ngắt câu gây sai lệch ngữ nghĩa.
 - featured_alt, featured_title, featured_caption: Theo quy chuẩn báo chí.
 - enable_text_in_image: true (vì ảnh bìa luôn có text) hoặc dựa trên ảnh gốc.
 `;
@@ -904,15 +910,18 @@ QUY TẮC:
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, screenshot phần mềm chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
 3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 4. QUY TẮC BẮT BUỘC VỀ THƯƠNG HIỆU & LOGO NGUỒN (SOURCE BRANDING REMOVAL):
-   - TUYỆT ĐỐI KHÔNG mang bất kỳ logo, thương hiệu công ty, nhãn hiệu, biểu tượng, con dấu (seal/stamp), huy hiệu nào từ ảnh nguồn vào "concept" hay "generation_prompt". Coi đó là chi tiết phải loại bỏ hoàn toàn.
-   - Thay thế mọi chi tiết thương hiệu bằng hình ảnh công sở hoặc tài liệu kế toán trung tính, không gắn nhãn hiệu.
-   - Với tài liệu/hóa đơn/bảng biểu: chỉ tạo dạng biểu mẫu/bảng biểu giải thích trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giữ chỗ logo giả.
+   - TUYỆT ĐỐI KHÔNG mang bất kỳ logo, thương hiệu công ty nguồn, nhãn hiệu, biểu tượng, con dấu (seal/stamp), huy hiệu nào từ ảnh nguồn vào "concept" hay "generation_prompt". Coi đó là chi tiết phải loại bỏ hoàn toàn.
+   - Thay thế mọi chi tiết thương hiệu bằng hình ảnh công sở hoặc tài liệu kế toán trung tính, không gắn nhãn hiệu công ty nguồn.
+   - Với tài liệu/hóa đơn/bảng biểu: chỉ tạo dạng biểu mẫu/bảng biểu giải thích trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu công ty nguồn, KHÔNG có ô giữ chỗ logo giả.
 ${allowedSoftwareBrands.length > 0 ? `
 QUY TẮC ĐẶC BIỆT VỀ TÊN PHẦN MỀM LÀ CHỦ ĐỀ BÀI VIẾT:
    - Bài viết có chủ đề về phần mềm: ${allowedSoftwareBrands.join(', ')}.
+   - NO source company/organization brand names.
+   - NO official software logo / brand mark.
+   - Allowed contextual software name (${allowedSoftwareBrands.join(', ')}) from article context MAY appear ONLY as editorial text, headline, or workflow label.
    - Tên phần mềm (${allowedSoftwareBrands.join(', ')}) ĐƯỢC PHÉP xuất hiện dưới dạng text trong "cover_caption", "primary_headline", "concept", "generation_prompt", "alt", "caption".
-   - TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG của ${allowedSoftwareBrands.join(', ')}.
-   - Không copy nguyên screenshot cũ pixel-by-pixel; có thể tạo minh họa giao diện trung tính hoặc chuyên viên làm việc.` : ''}
+   - TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG CHÍNH THỨC của ${allowedSoftwareBrands.join(', ')}.
+   - Tuyệt đối không sao chép nguyên screenshot cũ pixel-by-pixel; có thể tạo minh họa giao diện trung tính hoặc chuyên viên làm việc.` : ''}
 5. Xác định "classification":
    - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
    - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
@@ -921,7 +930,7 @@ QUY TẮC ĐẶC BIỆT VỀ TÊN PHẦN MỀM LÀ CHỦ ĐỀ BÀI VIẾT:
    - NẾU ảnh nguồn thuộc nhóm tài liệu/bảng biểu/hóa đơn/chứng từ/biểu mẫu (visual_type là invoice, accounting document, form, table, spreadsheet, financial statement, structured document, hoặc ảnh chứa bảng dữ liệu/hóa đơn/chứng từ):
      + KHÔNG yêu cầu AI sao chép hóa đơn/tài liệu gốc.
      + concept (Tiếng Việt): Đề xuất dạng ảnh minh họa đồ họa báo chí kinh tế / explainer visual giải thích nghiệp vụ kế toán về chủ đề liên quan. Thể hiện các yếu tố trực quan như: mẫu chứng từ/hóa đơn tinh gọn, bảng số liệu kế toán có dòng và cột rõ ràng, các khối đối chiếu/điều chỉnh, máy tính cầm tay hoặc bảng tính phù hợp. TUYỆT ĐỐI KHÔNG đưa logo, thương hiệu, con dấu vào concept.
-     + generation_prompt (Tiếng Anh): Ưu tiên dạng professional Vietnamese accounting editorial illustration / explainer visual. Ví dụ tinh thần: "Create a clean unbranded Vietnamese accounting editorial visual about [chủ đề nghiệp vụ bằng tiếng Anh]. Show a newly designed generic invoice/document together with a structured accounting table containing clear rows, columns and adjustment blocks. Generic invoice/document/table only, with no company logo, no government emblem, no seal or stamp, no brand name. The visual communicates invoice adjustment and bookkeeping using a new composition and neutral visuals without reproducing the original document, company information or exact figures."
+     + generation_prompt (Tiếng Anh): Ưu tiên dạng professional Vietnamese accounting editorial illustration / explainer visual. Ví dụ tinh thần: "Create a clean unbranded Vietnamese accounting editorial visual about [chủ đề nghiệp vụ bằng tiếng Anh]. Show a newly designed generic invoice/document together with a structured accounting table containing clear rows, columns and adjustment blocks. Generic invoice/document/table only, with no source company/organization brand names, no official software logo, no government emblem, no seal or stamp. The visual communicates invoice adjustment and bookkeeping using a new composition and neutral visuals without reproducing the original document, company information or exact figures."
      + Ảnh mới phải: khác bố cục tài liệu gốc rõ rệt; không chép nguyên layout; không chép số liệu, tên doanh nghiệp, mã số thuế hoặc nội dung nhạy cảm của hóa đơn gốc; chỉ giữ Ý NGHĨA nghiệp vụ/chủ đề; tuyệt đối loại bỏ toàn bộ logo/thương hiệu ảnh gốc.
      + Nếu enable_text_in_image = true: chỉ dùng headline đã được hệ thống chọn (cover_caption), tuyệt đối KHÔNG OCR toàn bộ tài liệu.
    - NẾU ảnh nguồn là người/văn phòng thông thường (photo, office, person):
@@ -1326,7 +1335,7 @@ export async function generateImageWithVertex(
   const allowedBrands = extractAllowedSoftwareBrands({
     articleTitle,
     effectiveArticleTitle: articleTitle,
-    articleUrl: articleUrl || slot.source_image?.resolved_url || slot.old_src,
+    articleUrl: articleUrl || undefined,
   });
 
   // Build rich editorial prompt combining: article title, local context, concept, visual style rules, aspect ratio
@@ -1348,23 +1357,23 @@ export async function generateImageWithVertex(
 
   const brandName = allowedBrands.length > 0 ? allowedBrands[0] : null;
   const brandLogosNegative = brandName
-    ? `Do NOT create official ${brandName} logo marks or corporate icons. Render only unbranded stylized software UI for ${brandName} workflow.`
+    ? `NO source company/organization brand names. NO official software logo / brand mark. Allowed contextual software name (${brandName}) from article context MAY appear only as editorial text/headline/workflow label. Never render its official logo or copy original screenshot UI. Render only unbranded stylized software UI representing ${brandName} workflow without official logo marks.`
     : '';
 
   let textRenderingDirective = '';
-  let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO badges, NO watermarks, NO lettermarks, NO trademark-like symbols, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+  let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO source company/organization brand names, NO official software logo / brand mark, NO corporate logos, NO government-style emblems, NO seals, NO stamps, NO badges, NO watermarks, NO lettermarks, NO trademark-like symbols, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   
   if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
     const headline = formatWithAllowedSoftwareBrands(slot.cover_caption.trim(), allowedBrands);
     textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${headline}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces or key visual blocks.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
     negativeConstraints = isDocVisual
-      ? `STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names from source documents, real tax identification numbers, or confidential figures. Render ONLY the requested headline text ("${headline}"). Do NOT create official software logos, corporate logos, brand marks, watermarks, stamps, seals, government-style emblems, or fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. No cartoonish 3D render, no distorted AI artifacts.`
-      : `STRICT NEGATIVE CONSTRAINTS: Absolutely NO official software logos, corporate logos, source company brand marks, emblems, seals, stamps, badges, watermarks, lettermarks, trademark-like symbols, or fake logo placeholders. ${brandLogosNegative} Do not add any random decorative text other than the EXACT headline requested ("${headline}"). Do not use cartoonish 3D renders or artificial AI artifacts.`;
+      ? `STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names from source documents, real tax identification numbers, or confidential figures. Render ONLY the requested headline text ("${headline}"). NO source company/organization brand names. NO official software logo / brand mark. Do NOT create watermarks, stamps, seals, government-style emblems, or fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. No cartoonish 3D render, no distorted AI artifacts.`
+      : `STRICT NEGATIVE CONSTRAINTS: NO source company/organization brand names. NO official software logo / brand mark. Absolutely NO source company brand marks, emblems, seals, stamps, badges, watermarks, lettermarks, trademark-like symbols, or fake logo placeholders. ${brandLogosNegative} Do not add any random decorative text other than the EXACT headline requested ("${headline}"). Do not use cartoonish 3D renders or artificial AI artifacts.`;
   } else if (isFeatured || slot.enable_text_in_image === false) {
     // Ensure no text if not enabled
     negativeConstraints = isDocVisual
-      ? `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO official software logos, NO brand marks, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.`
-      : `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO official software logos, NO brand marks, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.`;
+      ? `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO source company/organization brand names, NO official software logo / brand mark, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.`
+      : `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO source company/organization brand names, NO official software logo / brand mark, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.`;
   }
 
   const contextualBrandDirective = getContextualSoftwareBrandDirective(allowedBrands);
@@ -1376,7 +1385,7 @@ export async function generateImageWithVertex(
 Topic of article: "${articleTitle || 'Kinh tế, Kế toán và Thuế Việt Nam'}".
 ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
-Key Visual Elements: A newly designed, simplified generic unbranded invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. Generic invoice, document and table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
+Key Visual Elements: A newly designed, simplified generic unbranded invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. Generic invoice, document and table only: absolutely NO source company/organization brand names, NO official software logo / brand mark, NO government-style emblem, NO seal or stamp, and NO fake logo placeholder. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
 Composition & Visual Style: ${orientation}. Clean modern graphic explainer illustration style with refined typography, balanced layout, professional corporate color palette (teal, navy, slate, warm paper tone). High clarity and sophistication.
 Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}${contextualBrandDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
 

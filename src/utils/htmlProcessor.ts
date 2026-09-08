@@ -47,29 +47,81 @@ export const CLASSIFICATION_DEFAULT_REASONS: Record<ImageClassification, string>
 
 export interface SoftwareBrandDefinition {
   name: string;
-  pattern: RegExp;
+  titlePattern: RegExp;
+  urlPattern?: RegExp;
   category?: 'accounting' | 'spreadsheet' | 'tax' | 'general';
 }
 
 export const KNOWN_SOFTWARE_BRANDS: SoftwareBrandDefinition[] = [
-  { name: 'MISA', pattern: /\b(misa|amis)\b/i, category: 'accounting' },
-  { name: 'FAST', pattern: /\b(fast)\b/i, category: 'accounting' },
-  { name: 'Excel', pattern: /\b(excel)\b/i, category: 'spreadsheet' },
-  { name: 'HTKK', pattern: /\b(htkk)\b/i, category: 'tax' },
-  { name: 'eTax', pattern: /\b(etax|thuedientu|thue-dien-tu)\b/i, category: 'tax' },
-  { name: 'BRAVO', pattern: /\b(bravo)\b/i, category: 'accounting' },
-  { name: 'SAP', pattern: /\b(sap)\b/i, category: 'accounting' },
-  { name: 'Word', pattern: /\b(word)\b/i, category: 'general' },
-  { name: 'Google Sheets', pattern: /\b(google\s*sheets)\b/i, category: 'spreadsheet' },
+  {
+    name: 'MISA',
+    titlePattern: /\b(misa|amis)\b/i,
+    urlPattern: /(?:^|[-_/])(misa|amis)(?:[-_/]|$)/i,
+    category: 'accounting',
+  },
+  {
+    name: 'FAST',
+    titlePattern: /\b(fast)\b/i,
+    urlPattern: /(?:^|[-_/])(phan-mem-fast|fast-accounting|fast-erp)(?:[-_/]|$)/i,
+    category: 'accounting',
+  },
+  {
+    name: 'Excel',
+    titlePattern: /\b(excel)\b/i,
+    urlPattern: /(?:^|[-_/])excel(?:[-_/]|$)/i,
+    category: 'spreadsheet',
+  },
+  {
+    name: 'HTKK',
+    titlePattern: /\b(htkk)\b/i,
+    urlPattern: /(?:^|[-_/])htkk(?:[-_/]|$)/i,
+    category: 'tax',
+  },
+  {
+    name: 'eTax',
+    // Explicit etax only - NOT generic "thue-dien-tu" or "thuedientu"
+    titlePattern: /\b(etax|e-tax)\b/i,
+    urlPattern: /(?:^|[-_/])(etax|e-tax)(?:[-_/]|$)/i,
+    category: 'tax',
+  },
+  {
+    name: 'BRAVO',
+    titlePattern: /\b(bravo)\b/i,
+    urlPattern: /(?:^|[-_/])(phan-mem-bravo|bravo)(?:[-_/]|$)/i,
+    category: 'accounting',
+  },
+  {
+    name: 'SAP',
+    // In title: all-caps SAP or with explicit software context (avoids matching Vietnamese "sắp", "sáp")
+    titlePattern: /\bSAP\b|\b(phần\s*mềm|hệ\s*thống|ứng\s*dụng|ung\s*dung|erp)\s*sap\b/i,
+    // In URL: explicit software slug tokens only, NEVER bare "sap" (which matches generic Vietnamese "sap-nhap", "sap-xep", "sap-toi")
+    urlPattern: /(?:^|[-_/])(phan-mem-sap|sap-erp|he-thong-sap)(?:[-_/]|$)/i,
+    category: 'accounting',
+  },
+  {
+    name: 'Word',
+    titlePattern: /\b(microsoft\s*word|ms\s*word)\b/i,
+    urlPattern: /(?:^|[-_/])(microsoft-word|ms-word)(?:[-_/]|$)/i,
+    category: 'general',
+  },
+  {
+    name: 'Google Sheets',
+    titlePattern: /\b(google\s*sheets?|gg\s*sheets?)\b/i,
+    urlPattern: /(?:^|[-_/])(google-sheets?|googlesheets?)(?:[-_/]|$)/i,
+    category: 'spreadsheet',
+  },
 ];
 
 /**
  * Extracts allowed contextual software brands ONLY from verified textual article context:
  * 1. articleTitle
  * 2. effectiveArticleTitle
- * 3. articleUrl
+ * 3. real articleUrl passed from article context
  *
- * STRICT: NEVER extract from OCR text, watermarks, or visual analysis of source images.
+ * STRICT: NEVER extract from OCR text, watermarks, visual analysis of source images,
+ * slot.source_image, or slot.old_src.
+ * URL brand matching is conservative and avoids generic Vietnamese words (e.g. sap, thue-dien-tu).
+ * Article/effective title evidence is strictly preferred over URL evidence.
  */
 export function extractAllowedSoftwareBrands(
   input:
@@ -83,24 +135,54 @@ export function extractAllowedSoftwareBrands(
     | undefined
 ): string[] {
   if (!input) return [];
-  let combined = '';
+
+  let titleText = '';
+  let urlText = '';
+
   if (typeof input === 'string') {
-    combined = input;
+    titleText = input;
   } else {
-    combined = [input.articleTitle, input.effectiveArticleTitle, input.articleUrl]
-      .filter(Boolean)
-      .join(' ');
+    titleText = [input.articleTitle, input.effectiveArticleTitle].filter(Boolean).join(' ');
+    urlText = input.articleUrl || '';
   }
-  if (!combined.trim()) return [];
 
   const found: string[] = [];
-  for (const item of KNOWN_SOFTWARE_BRANDS) {
-    if (item.pattern.test(combined)) {
-      if (!found.includes(item.name)) {
-        found.push(item.name);
+
+  // 1. Primary: Prefer article / effective title evidence
+  if (titleText.trim()) {
+    for (const brand of KNOWN_SOFTWARE_BRANDS) {
+      if (brand.titlePattern.test(titleText)) {
+        if (!found.includes(brand.name)) {
+          found.push(brand.name);
+        }
       }
     }
   }
+
+  // If title evidence matches software brand(s), return them (title evidence takes precedence)
+  if (found.length > 0) {
+    return found;
+  }
+
+  // 2. Secondary & Conservative: URL evidence (only if explicit real articleUrl provided)
+  if (urlText.trim()) {
+    let cleanUrl = urlText;
+    try {
+      const parsed = new URL(urlText.startsWith('http') ? urlText : `https://${urlText}`);
+      cleanUrl = parsed.pathname;
+    } catch {
+      cleanUrl = urlText;
+    }
+
+    for (const brand of KNOWN_SOFTWARE_BRANDS) {
+      if (brand.urlPattern && brand.urlPattern.test(cleanUrl)) {
+        if (!found.includes(brand.name)) {
+          found.push(brand.name);
+        }
+      }
+    }
+  }
+
   return found;
 }
 
@@ -141,41 +223,52 @@ export function formatWithAllowedSoftwareBrands(
 /**
  * Generates an appropriate, concise editorial cover headline from an article title,
  * preserving allowed contextual software brand names (e.g. "Hạch toán giảm giá hàng bán trên MISA").
+ * 
+ * Rules:
+ * - Never blindly truncate if it changes meaning (e.g. cutting "giảm giá" into "giảm")
+ * - Preserve the software brand
+ * - If safe shortening is not obvious, keep the cleaned title intact rather than producing a semantically broken headline
  */
 export function generateDefaultCoverHeadline(
   title: string,
   allowedBrands: string[] = []
 ): string {
   if (!title || !title.trim()) return 'Nghiệp vụ kế toán doanh nghiệp';
+
   let cleaned = title
-    .replace(/^(hướng dẫn|cách|quy trình|thủ tục|phương pháp|các bước|kinh nghiệm)\s+/i, '')
+    .replace(/^(hướng dẫn cách|hướng dẫn chi tiết|hướng dẫn|cách thức|cách|quy trình|thủ tục|phương pháp|các bước|kinh nghiệm|tổng hợp|chi tiết về|tìm hiểu về)\s+/i, '')
     .replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '')
     .replace(/["“”'']/g, '')
     .trim();
 
-  // Normalize casing for allowed brands
+  // Safely clean redundant compound verb phrases that distort meaning when prolonged
+  // E.g. "hạch toán bán hàng có giảm giá hàng bán" -> "hạch toán giảm giá hàng bán"
+  cleaned = cleaned.replace(/\bbán hàng có (giảm giá hàng bán|chiết khấu thương mại|hàng bán bị trả lại)\b/i, '$1');
+
+  // Strip trailing promotional/time fluff that adds length without accounting meaning
+  cleaned = cleaned
+    .replace(/\s+(mới nhất|chi tiết nhất|chuẩn xác nhất|đầy đủ nhất)\b.*$/i, '')
+    .replace(/\s+(dành cho kế toán|bạn cần biết|cần biết|ai cũng nên biết)\b.*$/i, '')
+    .trim();
+
+  // Normalize casing for allowed brands (e.g. Misa -> MISA)
   cleaned = formatWithAllowedSoftwareBrands(cleaned, allowedBrands);
 
   if (cleaned.length > 0) {
     cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
 
-  // If long, optimize length while ensuring software brand is preserved
-  const words = cleaned.split(/\s+/);
-  if (words.length > 8) {
-    const brand = allowedBrands[0];
-    if (brand && cleaned.toLowerCase().includes(brand.toLowerCase())) {
-      const brandIndex = words.findIndex((w) => w.toLowerCase().includes(brand.toLowerCase()));
-      if (brandIndex >= 0 && brandIndex <= 8) {
-        cleaned = words.slice(0, brandIndex + 1).join(' ');
-      } else {
-        cleaned = words.slice(0, 6).join(' ') + ` trên ${brand}`;
-      }
-    } else {
-      cleaned = words.slice(0, 8).join(' ');
+  // Preserve software brand if provided from context but absent in cleaned title
+  const brand = allowedBrands.length > 0 ? allowedBrands[0] : null;
+  if (brand && !cleaned.toLowerCase().includes(brand.toLowerCase())) {
+    const wordCount = cleaned.split(/\s+/).length;
+    // Only append if headline is concise and doesn't already have another preposition
+    if (wordCount <= 8 && !/\b(trên|trong|bằng)\b/i.test(cleaned)) {
+      cleaned = `${cleaned} trên ${brand}`;
     }
   }
 
+  // Keep cleaned title intact rather than blindly slicing words and producing semantically broken headlines
   return cleaned;
 }
 
@@ -448,12 +541,12 @@ export function buildDocumentTablePrompt(
   const brandName = allowedBrands.length > 0 ? allowedBrands[0] : null;
 
   const brandDirectiveEn = brandName
-    ? `Generic software interface and bookkeeping for ${brandName} workflow: absolutely NO official ${brandName} logo or trademark icon, NO company logo, NO government-style emblem, NO seal or stamp, and NO fake logo placeholder. Render clean, stylized unbranded accounting software UI representing ${brandName} tasks without official logo marks.`
-    : `Generic invoice/document/table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder.`;
+    ? `Generic software interface and bookkeeping for ${brandName} workflow: NO source company/organization brand names, NO official software logo / brand mark, NO government-style emblem, NO seal or stamp, and NO fake logo placeholder. Allowed contextual software name (${brandName}) from article context MAY appear ONLY as editorial text, headline, or workflow label. Never render its official logo or copy original screenshot UI. Render clean, stylized unbranded accounting software UI representing ${brandName} workflows without official logo marks.`
+    : `Generic invoice/document/table only: NO source company/organization brand names, NO corporate logo, NO government-style emblem, NO seal or stamp, and NO fake logo placeholder.`;
 
   const brandDirectiveVn = brandName
-    ? `Thiết kế mẫu chứng từ/bảng biểu kế toán hoặc giao diện thao tác nghiệp vụ ${brandName} trung tính, không chứa logo chính thức của ${brandName} hay bất kỳ thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép ảnh chụp màn hình cũ.`
-    : `Thiết kế mẫu chứng từ/bảng biểu kế toán trung tính, không chứa bất kỳ logo, thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`;
+    ? `Thiết kế mẫu chứng từ/bảng biểu kế toán hoặc giao diện thao tác nghiệp vụ ${brandName} trung tính, KHÔNG chứa logo chính thức của ${brandName}, không chứa bất kỳ thương hiệu/logo công ty nguồn, quốc huy, biểu tượng cơ quan hay con dấu nào. Tên phần mềm (${brandName}) chỉ được phép xuất hiện dưới dạng text/tiêu đề/nhãn nghiệp vụ. Tuyệt đối không vẽ logo chính thức hay sao chép nguyên screenshot cũ; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại.`
+    : `Thiết kế mẫu chứng từ/bảng biểu kế toán trung tính, không chứa bất kỳ logo, thương hiệu công ty nguồn, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`;
 
   return {
     concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${formattedTopic}. ${brandDirectiveVn}`,
