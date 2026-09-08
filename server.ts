@@ -16,6 +16,10 @@ import {
   generateEditorialCaption,
   isDocumentOrTableVisual,
   buildDocumentTablePrompt,
+  extractAllowedSoftwareBrands,
+  extractAllowedSoftwareBrand,
+  formatWithAllowedSoftwareBrands,
+  generateDefaultCoverHeadline,
 } from './src/utils/htmlProcessor';
 import {
   slugifyVietnamese,
@@ -518,32 +522,75 @@ export const SOURCE_BRANDING_REMOVAL_DIRECTIVE = `\n\nSOURCE BRANDING REMOVAL:
 - Documents, screens, laptops, forms, products and interfaces must contain no identifiable brand/logo inherited from the source.
 - Preserve only subject meaning, never source branding.`;
 
-export const DOC_TABLE_BRANDING_DIRECTIVE = `\n\nDOCUMENT/TABLE VISUAL BRANDING RULES:
-- Generic invoice/document/table only
-- NO company logo
+export function getContextualSoftwareBrandDirective(allowedBrands: string[]): string {
+  if (!allowedBrands || allowedBrands.length === 0) return '';
+  const brandList = allowedBrands.join(', ');
+  return `\n\nCONTEXTUAL SOFTWARE BRAND TEXT ALLOWANCE:
+- The article subject specifically covers software: ${brandList}.
+- You MAY use the software name (${brandList}) ONLY as contextual editorial text in headlines, cover captions, or workflow labels.
+- Do NOT recreate official software logos, trademark icons, brand emblems, or badges.
+- Do NOT copy screenshots from the original source image pixel-by-pixel.
+- Render clean, stylized generic accounting software interfaces and modern office visuals appropriate for ${brandList} without any official logo marks.`;
+}
+
+export function getDocTableBrandingDirective(allowedBrands: string[] = []): string {
+  const brandAllowance =
+    allowedBrands.length > 0
+      ? `\n- Permitted software name (${allowedBrands.join(', ')}) from article context may appear ONLY as editorial contextual text or headline, NEVER as a logo or brand mark`
+      : `\n- NO brand name or company name`;
+
+  return `\n\nDOCUMENT/TABLE/INTERFACE VISUAL BRANDING RULES:
+- Generic invoice/document/table/software interface only
+- NO company logo or official software logo mark
 - NO government-style emblem
 - NO seal/stamp
-- NO brand name
-- NO fake logo placeholder`;
+- NO fake logo placeholder${brandAllowance}`;
+}
+
+export const DOC_TABLE_BRANDING_DIRECTIVE = getDocTableBrandingDirective();
 
 /**
  * Ensures analyzer output and visual concepts do not carry detected source branding into positive generation instructions.
  * If a prompt or concept mentions logos, brands, emblems, or seals from source imagery, strips or neutralizes them.
+ * Preserves allowed contextual software brand names (e.g. MISA, FAST, Excel, HTKK, eTax) in textual context,
+ * while preventing instructions to draw official logos or recreate source screenshots.
  */
-export function sanitizeBrandingPrompt(text: string): string {
+export function sanitizeBrandingPrompt(text: string, allowedBrands: string[] = []): string {
   if (!text) return '';
   let cleaned = text;
 
+  // Protect allowed software brand occurrences in case of generic brand stripping
+  // If text contains instructions to draw an allowed brand's official logo, convert to neutral software interface / task
+  for (const brand of allowedBrands) {
+    const logoRegex = new RegExp(`\\b(logo|biểu tượng|huy hiệu|nhãn hiệu|con dấu)\\s+(chính thức của\\s+)?(${brand})\\b`, 'gi');
+    cleaned = cleaned.replace(logoRegex, `giao diện nghiệp vụ ${brand}`);
+
+    const enLogoRegex = new RegExp(`\\b(official\\s+)?(${brand})\\s+(logo|brand mark|emblem|icon|badge)\\b`, 'gi');
+    cleaned = cleaned.replace(enLogoRegex, `unbranded stylized ${brand} interface`);
+  }
+
   // English phrases describing positive generation or inclusion of logos/brands/emblems/seals
-  cleaned = cleaned.replace(/\b(featuring|displaying|showing|bearing|including|incorporating|with|has)\s+(a\s+|the\s+)?(company|corporate|brand|organization|client|bank)?\s*(logo|brand name|brand identity|emblem|badge|seal|stamp|watermark|lettermark|trademark)[^.,;\n]*/gi, '');
-  cleaned = cleaned.replace(/\b(reproduce|recreate|draw|include|render|show|display)\s+(the\s+)?(source\s+|original\s+)?(logo|branding|brand name|emblem|seal|stamp)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(featuring|displaying|showing|bearing|including|incorporating|with|has)\s+(a\s+|the\s+)?(company|corporate|brand|organization|client|bank)?\s*(logo|brand identity|emblem|badge|seal|stamp|watermark|lettermark|trademark)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(reproduce|recreate|draw|include|render|show|display)\s+(the\s+)?(source\s+|original\s+)?(logo|branding|emblem|seal|stamp)[^.,;\n]*/gi, '');
   
   // Vietnamese phrases describing positive generation or inclusion of logos/brands/emblems/seals
-  cleaned = cleaned.replace(/\b(kèm theo|hiển thị|chứa|có|mang|thể hiện|giữ lại|tái hiện)\s+(logo|thương hiệu|nhãn hiệu|biểu tượng|con dấu|mộc đỏ|huy hiệu)[^.,;\n]*/gi, '');
-  cleaned = cleaned.replace(/\b(logo|thương hiệu|nhãn hiệu|con dấu|mộc đỏ)\s+(của|từ|trên)\s+(ảnh gốc|công ty|doanh nghiệp|tài liệu|ngân hàng)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(kèm theo|hiển thị|chứa|có|mang|thể hiện|giữ lại|tái hiện)\s+(logo|nhãn hiệu|biểu tượng|con dấu|mộc đỏ|huy hiệu)[^.,;\n]*/gi, '');
+  cleaned = cleaned.replace(/\b(logo|nhãn hiệu|con dấu|mộc đỏ)\s+(của|từ|trên)\s+(ảnh gốc|công ty|doanh nghiệp|tài liệu|ngân hàng)[^.,;\n]*/gi, '');
+
+  // Strip generic corporate brand name mentions while preserving allowed software brands
+  if (allowedBrands.length === 0) {
+    cleaned = cleaned.replace(/\b(featuring|displaying|showing|with)\s+(the\s+)?brand name[^.,;\n]*/gi, '');
+    cleaned = cleaned.replace(/\b(hiển thị|chứa|có)\s+tên thương hiệu[^.,;\n]*/gi, '');
+  }
 
   // Clean up any double spaces or awkward punctuation left over
   cleaned = cleaned.replace(/\s{2,}/g, ' ').replace(/\s+([,.;])/g, '$1').trim();
+
+  // Normalize canonical casing for allowed brands
+  if (allowedBrands.length > 0) {
+    cleaned = formatWithAllowedSoftwareBrands(cleaned, allowedBrands);
+  }
+
   return cleaned;
 }
 
@@ -579,6 +626,13 @@ app.post('/api/analyze-article', async (req, res) => {
       fallback: 'bai-viet-kinh-te-thue',
     });
 
+    const allowedSoftwareBrands = extractAllowedSoftwareBrands({
+      articleTitle: effectiveArticleTitle,
+      effectiveArticleTitle,
+      articleUrl,
+    });
+    const defaultCoverCaption = generateDefaultCoverHeadline(effectiveArticleTitle, allowedSoftwareBrands);
+
     // Build default slots from extracted images
     const slots: ImageSlotPlan[] = [];
 
@@ -596,7 +650,10 @@ app.post('/api/analyze-article', async (req, res) => {
       suggested_concept: `Chuyên viên kế toán doanh nghiệp Việt Nam làm việc tại văn phòng hiện đại, ánh sáng tự nhiên, liên quan chủ đề: "${effectiveArticleTitle}"`,
       generation_prompt: `High quality editorial journalism photography of a professional Vietnamese corporate accountant working in a modern office in Vietnam, natural office window lighting, shallow depth of field, 50mm f/2.8 lens, related to: "${effectiveArticleTitle}".`,
       suggested_filename: generateFeaturedFilename(slug),
-      suggested_alt: `Ảnh minh họa chuyên viên tài chính kế toán rà soát chứng từ liên quan ${effectiveArticleTitle.toLowerCase()}`,
+      suggested_alt: `Ảnh minh họa chuyên viên tài chính kế toán rà soát chứng từ liên quan ${formatWithAllowedSoftwareBrands(effectiveArticleTitle.toLowerCase(), allowedSoftwareBrands)}`,
+      cover_caption: defaultCoverCaption,
+      enable_text_in_image: true,
+      caption: generateEditorialCaption('', '', effectiveArticleTitle, allowedSoftwareBrands),
       aspect_ratio: '16:9',
       selected: true,
       status: 'pending',
@@ -738,6 +795,14 @@ QUY TẮC BẮT BUỘC VỀ THƯƠNG HIỆU & LOGO NGUỒN (SOURCE BRANDING REMO
 - KHÔNG đưa tên thương hiệu, mô tả logo, nhãn hiệu, huy hiệu, con dấu từ ảnh gốc vào "featured_concept", "featured_generation_prompt" hay các trường metadata.
 - Mọi hình ảnh và đối tượng đề xuất phải trung tính, không mang nhãn hiệu (unbranded, generic).
 - Với tài liệu/hóa đơn/bảng biểu: chỉ đề xuất mẫu trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giả logo.
+${allowedSoftwareBrands.length > 0 ? `
+QUY TẮC ĐẶC BIỆT VỀ TÊN PHẦN MỀM LÀ CHỦ ĐỀ BÀI VIẾT:
+- Bài viết có chủ đề về phần mềm: ${allowedSoftwareBrands.join(', ')}.
+- Tên phần mềm (${allowedSoftwareBrands.join(', ')}) ĐƯỢC PHÉP xuất hiện dưới dạng chữ viết (text) trong:
+  + "featured_cover_caption" (ví dụ: "Hướng dẫn hạch toán trên ${allowedSoftwareBrands[0]}")
+  + "featured_concept", "featured_generation_prompt", "featured_alt", "featured_title", "featured_caption"
+- TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG của ${allowedSoftwareBrands.join(', ')}.
+- Tạo giao diện minh họa hiện đại, trung tính hoặc hình ảnh chuyên viên làm việc chuyên nghiệp, không sao chép nguyên screenshot cũ.` : ''}
 
 YÊU CẦU:
 - featured_concept: Ý tưởng bằng Tiếng Việt (trung tính, không chứa thương hiệu từ ảnh gốc).
@@ -788,12 +853,12 @@ YÊU CẦU:
           const targetSlot = slots[0];
           if (targetSlot) {
             const hasVisual = slotImageBuffers.has('feature-1');
-            targetSlot.suggested_concept = sanitizeBrandingPrompt(result.featured_concept || targetSlot.suggested_concept);
-            targetSlot.generation_prompt = sanitizeBrandingPrompt(result.featured_generation_prompt || targetSlot.generation_prompt);
-            targetSlot.suggested_alt = result.featured_alt || targetSlot.suggested_alt;
-            targetSlot.title = result.featured_title;
-            targetSlot.caption = result.featured_caption;
-            targetSlot.cover_caption = result.featured_cover_caption;
+            targetSlot.suggested_concept = sanitizeBrandingPrompt(result.featured_concept || targetSlot.suggested_concept, allowedSoftwareBrands);
+            targetSlot.generation_prompt = sanitizeBrandingPrompt(result.featured_generation_prompt || targetSlot.generation_prompt, allowedSoftwareBrands);
+            targetSlot.suggested_alt = formatWithAllowedSoftwareBrands(result.featured_alt || targetSlot.suggested_alt, allowedSoftwareBrands);
+            targetSlot.title = result.featured_title ? formatWithAllowedSoftwareBrands(result.featured_title, allowedSoftwareBrands) : targetSlot.title;
+            targetSlot.caption = result.featured_caption ? formatWithAllowedSoftwareBrands(result.featured_caption, allowedSoftwareBrands) : targetSlot.caption;
+            targetSlot.cover_caption = formatWithAllowedSoftwareBrands(result.featured_cover_caption || targetSlot.cover_caption || defaultCoverCaption, allowedSoftwareBrands);
             targetSlot.enable_text_in_image = result.enable_text_in_image ?? true;
             
             targetSlot.visual_type = result.visual_type;
@@ -842,6 +907,12 @@ QUY TẮC:
    - TUYỆT ĐỐI KHÔNG mang bất kỳ logo, thương hiệu công ty, nhãn hiệu, biểu tượng, con dấu (seal/stamp), huy hiệu nào từ ảnh nguồn vào "concept" hay "generation_prompt". Coi đó là chi tiết phải loại bỏ hoàn toàn.
    - Thay thế mọi chi tiết thương hiệu bằng hình ảnh công sở hoặc tài liệu kế toán trung tính, không gắn nhãn hiệu.
    - Với tài liệu/hóa đơn/bảng biểu: chỉ tạo dạng biểu mẫu/bảng biểu giải thích trung tính (generic invoice/document/table), KHÔNG có logo công ty, KHÔNG có quốc huy/biểu tượng hành chính, KHÔNG có con dấu/mộc đỏ, KHÔNG có tên thương hiệu, KHÔNG có ô giữ chỗ logo giả.
+${allowedSoftwareBrands.length > 0 ? `
+QUY TẮC ĐẶC BIỆT VỀ TÊN PHẦN MỀM LÀ CHỦ ĐỀ BÀI VIẾT:
+   - Bài viết có chủ đề về phần mềm: ${allowedSoftwareBrands.join(', ')}.
+   - Tên phần mềm (${allowedSoftwareBrands.join(', ')}) ĐƯỢC PHÉP xuất hiện dưới dạng text trong "cover_caption", "primary_headline", "concept", "generation_prompt", "alt", "caption".
+   - TUYỆT ĐỐI KHÔNG ĐƯỢC VẼ LOGO / BIỂU TƯỢNG của ${allowedSoftwareBrands.join(', ')}.
+   - Không copy nguyên screenshot cũ pixel-by-pixel; có thể tạo minh họa giao diện trung tính hoặc chuyên viên làm việc.` : ''}
 5. Xác định "classification":
    - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
    - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
@@ -909,7 +980,7 @@ QUY TẮC:
             
             slotObj.classification = result.classification === 'GENERATE_FROM_SOURCE_AI' ? 'REPLACE_AI' : (result.classification || slotObj.classification);
             slotObj.enable_text_in_image = result.enable_text_in_image ?? Boolean(result.primary_headline);
-            slotObj.cover_caption = result.cover_caption || result.primary_headline || '';
+            slotObj.cover_caption = formatWithAllowedSoftwareBrands(result.cover_caption || result.primary_headline || '', allowedSoftwareBrands);
             
             const isSensitiveDoc = Boolean(
               result.is_sensitive_document ||
@@ -950,17 +1021,17 @@ QUY TẮC:
             slotObj.confidence = result.confidence || slotObj.confidence;
             slotObj.reason = result.reason || slotObj.reason;
             if (result.concept) {
-              slotObj.suggested_concept = sanitizeBrandingPrompt(result.concept);
+              slotObj.suggested_concept = sanitizeBrandingPrompt(result.concept, allowedSoftwareBrands);
               slotObj.concept = slotObj.suggested_concept;
             }
-            slotObj.generation_prompt = sanitizeBrandingPrompt(result.generation_prompt || slotObj.generation_prompt);
+            slotObj.generation_prompt = sanitizeBrandingPrompt(result.generation_prompt || slotObj.generation_prompt, allowedSoftwareBrands);
             
             if (result.alt) {
-              slotObj.suggested_alt = result.alt;
-              slotObj.alt = result.alt;
+              slotObj.suggested_alt = formatWithAllowedSoftwareBrands(result.alt, allowedSoftwareBrands);
+              slotObj.alt = slotObj.suggested_alt;
             }
-            slotObj.title = result.title;
-            slotObj.caption = result.caption;
+            slotObj.title = result.title ? formatWithAllowedSoftwareBrands(result.title, allowedSoftwareBrands) : slotObj.title;
+            slotObj.caption = result.caption ? formatWithAllowedSoftwareBrands(result.caption, allowedSoftwareBrands) : slotObj.caption;
             
             slotObj.visual_type = result.visual_type;
             slotObj.has_text = result.has_text;
@@ -1233,7 +1304,8 @@ async function validateGeneratedHeadline(
 export async function generateImageWithVertex(
   slot: ImageSlotPlan,
   articleTitle: string,
-  config: VertexServerConfig
+  config: VertexServerConfig,
+  articleUrl?: string
 ): Promise<{ 
   success: boolean; 
   imageDataUrl: string; 
@@ -1251,6 +1323,12 @@ export async function generateImageWithVertex(
   else if (slot.aspect_ratio === '4:3') targetRatio = '4:3';
   else if (slot.aspect_ratio === '1:1') targetRatio = '1:1';
 
+  const allowedBrands = extractAllowedSoftwareBrands({
+    articleTitle,
+    effectiveArticleTitle: articleTitle,
+    articleUrl: articleUrl || slot.source_image?.resolved_url || slot.old_src,
+  });
+
   // Build rich editorial prompt combining: article title, local context, concept, visual style rules, aspect ratio
   const contextHeading = slot.context_heading ? `Chủ đề phần nội dung: "${slot.context_heading}". ` : '';
   const contextPara = slot.context_paragraph
@@ -1261,29 +1339,36 @@ export async function generateImageWithVertex(
     slot.concept ||
     slot.suggested_concept ||
     '';
-  const visualConcept = sanitizeBrandingPrompt(rawConcept);
+  const visualConcept = sanitizeBrandingPrompt(rawConcept, allowedBrands);
   const orientation = isFeatured
     ? 'Ảnh ngang tỷ lệ rộng 16:9 (Wide 16:9 landscape aspect ratio), bố cục ảnh bìa báo chí'
     : 'Ảnh ngang tỷ lệ chuẩn 4:3 (Standard 4:3 editorial landscape aspect ratio), minh họa trong bài';
 
   const isDocVisual = isDocumentOrTableVisual(slot);
 
+  const brandName = allowedBrands.length > 0 ? allowedBrands[0] : null;
+  const brandLogosNegative = brandName
+    ? `Do NOT create official ${brandName} logo marks or corporate icons. Render only unbranded stylized software UI for ${brandName} workflow.`
+    : '';
+
   let textRenderingDirective = '';
   let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO badges, NO watermarks, NO lettermarks, NO trademark-like symbols, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   
   if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
-    textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces or key visual blocks.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
+    const headline = formatWithAllowedSoftwareBrands(slot.cover_caption.trim(), allowedBrands);
+    textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${headline}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces or key visual blocks.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
     negativeConstraints = isDocVisual
-      ? 'STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names, real tax identification numbers, or confidential figures. Render ONLY the requested headline text. Do NOT create corporate logos, brand names, watermarks, stamps, seals, government-style emblems, or fake logo placeholders. Generic invoice/document/table only. No cartoonish 3D render, no distorted AI artifacts.'
-      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO corporate logos, brand names, company names, emblems, seals, stamps, badges, watermarks, lettermarks, trademark-like symbols, or fake logo placeholders. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
+      ? `STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names from source documents, real tax identification numbers, or confidential figures. Render ONLY the requested headline text ("${headline}"). Do NOT create official software logos, corporate logos, brand marks, watermarks, stamps, seals, government-style emblems, or fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. No cartoonish 3D render, no distorted AI artifacts.`
+      : `STRICT NEGATIVE CONSTRAINTS: Absolutely NO official software logos, corporate logos, source company brand marks, emblems, seals, stamps, badges, watermarks, lettermarks, trademark-like symbols, or fake logo placeholders. ${brandLogosNegative} Do not add any random decorative text other than the EXACT headline requested ("${headline}"). Do not use cartoonish 3D renders or artificial AI artifacts.`;
   } else if (isFeatured || slot.enable_text_in_image === false) {
     // Ensure no text if not enabled
     negativeConstraints = isDocVisual
-      ? 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders. Generic invoice/document/table only. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.'
-      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO brand names, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+      ? `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO official software logos, NO brand marks, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders. ${brandLogosNegative} Generic invoice/document/table/software interface only. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.`
+      : `STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO official software logos, NO brand marks, NO company names, NO government-style emblems, NO seals, NO stamps, NO watermarks, NO lettermarks, NO fake logo placeholders, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.`;
   }
 
-  const docBrandingExtra = isDocVisual ? DOC_TABLE_BRANDING_DIRECTIVE : '';
+  const contextualBrandDirective = getContextualSoftwareBrandDirective(allowedBrands);
+  const docBrandingExtra = isDocVisual ? getDocTableBrandingDirective(allowedBrands) : '';
 
   let prompt: string;
   if (isDocVisual) {
@@ -1293,7 +1378,7 @@ ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
 Key Visual Elements: A newly designed, simplified generic unbranded invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. Generic invoice, document and table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
 Composition & Visual Style: ${orientation}. Clean modern graphic explainer illustration style with refined typography, balanced layout, professional corporate color palette (teal, navy, slate, warm paper tone). High clarity and sophistication.
-Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
+Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}${contextualBrandDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
 
 ${negativeConstraints}`;
   } else {
@@ -1303,7 +1388,7 @@ ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
 Composition & Aspect Ratio: ${orientation}. Sharp focus on human subjects, realistic documentary editorial style, shot on 50mm f/2.8 lens with shallow depth of field.
 Setting & Atmosphere: Authentic contemporary Vietnamese business office or corporate workspace in Hanoi or Ho Chi Minh City. Natural soft daylight from office windows, minimalist wooden desks, Vietnamese business professionals, modern laptop displaying blurred financial charts.
-Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
+Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}${contextualBrandDirective}${SOURCE_BRANDING_REMOVAL_DIRECTIVE}${docBrandingExtra}
 
 ${negativeConstraints}`;
   }
@@ -1447,10 +1532,13 @@ ${negativeConstraints}`;
     }
     let referenceGuidance = '';
     if (parts.length > 0) {
+      const allowedBrandNote = allowedBrands.length > 0
+        ? `\n- ALLOWED SOFTWARE SUBJECT: This article is about ${allowedBrands.join(', ')}. You may illustrate modern, stylized generic software UI representing ${allowedBrands.join(', ')} workflows. However, NEVER reproduce the official logo mark, corporate emblem, or watermark of ${allowedBrands.join(', ')} or any other entity from the reference image.`
+        : '';
       if (isSourceAiStrategy) {
-        referenceGuidance = '\n\nSOURCE RECREATION DIRECTIVE:\n- Preserve the same core meaning/topic\n- Create a genuinely new composition\n- Do NOT create a near-duplicate\n- Do NOT trace the original\n- Do NOT copy the exact layout\n- Change framing/camera angle\n- Change subject arrangement\n- Change background/environment where appropriate\n- Change lighting/mood\n- Use different visual treatment\n- Preserve semantic meaning, not visual duplication\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the source image. Replace with neutral, generic, unbranded visuals.';
+        referenceGuidance = `\n\nSOURCE RECREATION DIRECTIVE:\n- Preserve the same core meaning/topic\n- Create a genuinely new composition\n- Do NOT create a near-duplicate\n- Do NOT trace the original\n- Do NOT copy the exact layout\n- Change framing/camera angle\n- Change subject arrangement\n- Change background/environment where appropriate\n- Change lighting/mood\n- Use different visual treatment\n- Preserve semantic meaning, not visual duplication\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the source image. Replace with neutral, generic, unbranded visuals.${allowedBrandNote}`;
       } else {
-        referenceGuidance = '\n\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the reference image. Replace with neutral, generic, unbranded visuals.';
+        referenceGuidance = `\n\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.\n- REMOVE ALL SOURCE BRANDING: Strictly ignore and remove all logos, company names, brand names, emblems, seals, badges, watermarks and trademark-like symbols from the reference image. Replace with neutral, generic, unbranded visuals.${allowedBrandNote}`;
       }
     }
     parts.push({ text: prompt + variationDirective + referenceGuidance });
@@ -1543,7 +1631,7 @@ ${negativeConstraints}`;
  */
 app.post('/api/generate-image', async (req, res) => {
   try {
-    const { slot, articleTitle } = req.body;
+    const { slot, articleTitle, articleUrl } = req.body;
     if (!slot || !slot.suggested_concept) {
       return res.status(400).json({ error: 'Thiếu thông tin vị trí ảnh hoặc mô tả concept.' });
     }
@@ -1578,7 +1666,7 @@ app.post('/api/generate-image', async (req, res) => {
     }
 
     // Call Vertex AI generation
-    const result = await generateImageWithVertex(slot, articleTitle, serverVertexConfig);
+    const result = await generateImageWithVertex(slot, articleTitle, serverVertexConfig, articleUrl);
 
     // Apply deterministic branding and WebP optimization using Sharp
     let finalImageDataUrl = result.imageDataUrl;

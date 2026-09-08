@@ -522,6 +522,7 @@ export default function App() {
               body: JSON.stringify({
                 slot: currentSlot,
                 articleTitle: effectiveArticleTitle,
+                articleUrl: analysis?.article_url || articleUrl,
                 brandConfig: normalizedBrandProfile,
               }),
             });
@@ -693,6 +694,7 @@ export default function App() {
           body: JSON.stringify({
             slot: slotToProcess,
             articleTitle: effectiveArticleTitle,
+            articleUrl: analysis?.article_url || articleUrl,
             brandConfig: normalizedBrandProfile,
             regenerate: true,
           }),

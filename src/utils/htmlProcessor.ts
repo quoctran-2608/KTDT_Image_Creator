@@ -45,6 +45,140 @@ export const CLASSIFICATION_DEFAULT_REASONS: Record<ImageClassification, string>
   IGNORE: 'Không thuộc nội dung bài viết hoặc không cần xử lý.',
 };
 
+export interface SoftwareBrandDefinition {
+  name: string;
+  pattern: RegExp;
+  category?: 'accounting' | 'spreadsheet' | 'tax' | 'general';
+}
+
+export const KNOWN_SOFTWARE_BRANDS: SoftwareBrandDefinition[] = [
+  { name: 'MISA', pattern: /\b(misa|amis)\b/i, category: 'accounting' },
+  { name: 'FAST', pattern: /\b(fast)\b/i, category: 'accounting' },
+  { name: 'Excel', pattern: /\b(excel)\b/i, category: 'spreadsheet' },
+  { name: 'HTKK', pattern: /\b(htkk)\b/i, category: 'tax' },
+  { name: 'eTax', pattern: /\b(etax|thuedientu|thue-dien-tu)\b/i, category: 'tax' },
+  { name: 'BRAVO', pattern: /\b(bravo)\b/i, category: 'accounting' },
+  { name: 'SAP', pattern: /\b(sap)\b/i, category: 'accounting' },
+  { name: 'Word', pattern: /\b(word)\b/i, category: 'general' },
+  { name: 'Google Sheets', pattern: /\b(google\s*sheets)\b/i, category: 'spreadsheet' },
+];
+
+/**
+ * Extracts allowed contextual software brands ONLY from verified textual article context:
+ * 1. articleTitle
+ * 2. effectiveArticleTitle
+ * 3. articleUrl
+ *
+ * STRICT: NEVER extract from OCR text, watermarks, or visual analysis of source images.
+ */
+export function extractAllowedSoftwareBrands(
+  input:
+    | {
+        articleTitle?: string;
+        effectiveArticleTitle?: string;
+        articleUrl?: string;
+      }
+    | string
+    | null
+    | undefined
+): string[] {
+  if (!input) return [];
+  let combined = '';
+  if (typeof input === 'string') {
+    combined = input;
+  } else {
+    combined = [input.articleTitle, input.effectiveArticleTitle, input.articleUrl]
+      .filter(Boolean)
+      .join(' ');
+  }
+  if (!combined.trim()) return [];
+
+  const found: string[] = [];
+  for (const item of KNOWN_SOFTWARE_BRANDS) {
+    if (item.pattern.test(combined)) {
+      if (!found.includes(item.name)) {
+        found.push(item.name);
+      }
+    }
+  }
+  return found;
+}
+
+export function extractAllowedSoftwareBrand(
+  input:
+    | {
+        articleTitle?: string;
+        effectiveArticleTitle?: string;
+        articleUrl?: string;
+      }
+    | string
+    | null
+    | undefined
+): string | null {
+  const brands = extractAllowedSoftwareBrands(input);
+  return brands.length > 0 ? brands[0] : null;
+}
+
+/**
+ * Ensures allowed software brands in a text string maintain proper canonical casing (e.g. MISA, Excel, FAST, HTKK, eTax).
+ */
+export function formatWithAllowedSoftwareBrands(
+  text: string,
+  allowedBrands: string[] = []
+): string {
+  if (!text) return '';
+  let formatted = text;
+  const brandsToFormat =
+    allowedBrands.length > 0 ? allowedBrands : KNOWN_SOFTWARE_BRANDS.map((b) => b.name);
+
+  for (const brand of brandsToFormat) {
+    const regex = new RegExp(`\\b${brand}\\b`, 'gi');
+    formatted = formatted.replace(regex, brand);
+  }
+  return formatted;
+}
+
+/**
+ * Generates an appropriate, concise editorial cover headline from an article title,
+ * preserving allowed contextual software brand names (e.g. "Hạch toán giảm giá hàng bán trên MISA").
+ */
+export function generateDefaultCoverHeadline(
+  title: string,
+  allowedBrands: string[] = []
+): string {
+  if (!title || !title.trim()) return 'Nghiệp vụ kế toán doanh nghiệp';
+  let cleaned = title
+    .replace(/^(hướng dẫn|cách|quy trình|thủ tục|phương pháp|các bước|kinh nghiệm)\s+/i, '')
+    .replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '')
+    .replace(/["“”'']/g, '')
+    .trim();
+
+  // Normalize casing for allowed brands
+  cleaned = formatWithAllowedSoftwareBrands(cleaned, allowedBrands);
+
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  // If long, optimize length while ensuring software brand is preserved
+  const words = cleaned.split(/\s+/);
+  if (words.length > 8) {
+    const brand = allowedBrands[0];
+    if (brand && cleaned.toLowerCase().includes(brand.toLowerCase())) {
+      const brandIndex = words.findIndex((w) => w.toLowerCase().includes(brand.toLowerCase()));
+      if (brandIndex >= 0 && brandIndex <= 8) {
+        cleaned = words.slice(0, brandIndex + 1).join(' ');
+      } else {
+        cleaned = words.slice(0, 6).join(' ') + ` trên ${brand}`;
+      }
+    } else {
+      cleaned = words.slice(0, 8).join(' ');
+    }
+  }
+
+  return cleaned;
+}
+
 /**
  * Checks if a string looks like an unaccented filename or slug rather than finished Vietnamese editorial copy.
  */
@@ -118,15 +252,22 @@ export function generateEditorialTitle(
 export function generateEditorialCaption(
   heading = '',
   contextBefore = '',
-  articleTitle = ''
+  articleTitle = '',
+  allowedBrands: string[] = []
 ): string {
+  const brands =
+    allowedBrands.length > 0
+      ? allowedBrands
+      : extractAllowedSoftwareBrands({ articleTitle });
+
   const cleanHeading = (heading || '')
     .replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '')
     .replace(/["“”'']/g, '')
     .trim();
 
   if (cleanHeading && !isUnaccentedOrFilenameText(cleanHeading)) {
-    return `Quy trình và căn cứ thực hiện theo quy định liên quan đến ${cleanHeading.toLowerCase()}.`;
+    const formatted = formatWithAllowedSoftwareBrands(cleanHeading.toLowerCase(), brands);
+    return `Quy trình và căn cứ thực hiện theo quy định liên quan đến ${formatted}.`;
   }
 
   if (cleanHeading && isUnaccentedOrFilenameText(cleanHeading)) {
@@ -138,11 +279,12 @@ export function generateEditorialCaption(
 
   if (contextBefore && contextBefore.length > 25 && !isUnaccentedOrFilenameText(contextBefore)) {
     const firstSentence = contextBefore.split(/[.\n]/)[0].trim().slice(0, 85);
-    return `${firstSentence}.`;
+    return `${formatWithAllowedSoftwareBrands(firstSentence, brands)}.`;
   }
 
   if (articleTitle && !isUnaccentedOrFilenameText(articleTitle)) {
-    return `Chi tiết đối chiếu chứng từ và hồ sơ theo quy định về ${articleTitle.toLowerCase()}.`;
+    const formatted = formatWithAllowedSoftwareBrands(articleTitle.toLowerCase(), brands);
+    return `Chi tiết đối chiếu chứng từ và hồ sơ theo quy định về ${formatted}.`;
   }
 
   return 'Chi tiết đối chiếu chứng từ và hồ sơ tài chính kế toán theo quy định hiện hành.';
@@ -297,11 +439,25 @@ export function isDocumentOrTableVisual(slot: {
 /**
  * Builds specialized concept and generation prompt for document/table/invoice explainer visual
  */
-export function buildDocumentTablePrompt(topic: string): { concept: string; generation_prompt: string } {
+export function buildDocumentTablePrompt(
+  topic: string,
+  allowedBrands: string[] = []
+): { concept: string; generation_prompt: string } {
   const cleanTopic = topic.replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '').trim() || 'nghiệp vụ kế toán';
+  const formattedTopic = formatWithAllowedSoftwareBrands(cleanTopic, allowedBrands);
+  const brandName = allowedBrands.length > 0 ? allowedBrands[0] : null;
+
+  const brandDirectiveEn = brandName
+    ? `Generic software interface and bookkeeping for ${brandName} workflow: absolutely NO official ${brandName} logo or trademark icon, NO company logo, NO government-style emblem, NO seal or stamp, and NO fake logo placeholder. Render clean, stylized unbranded accounting software UI representing ${brandName} tasks without official logo marks.`
+    : `Generic invoice/document/table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder.`;
+
+  const brandDirectiveVn = brandName
+    ? `Thiết kế mẫu chứng từ/bảng biểu kế toán hoặc giao diện thao tác nghiệp vụ ${brandName} trung tính, không chứa logo chính thức của ${brandName} hay bất kỳ thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép ảnh chụp màn hình cũ.`
+    : `Thiết kế mẫu chứng từ/bảng biểu kế toán trung tính, không chứa bất kỳ logo, thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`;
+
   return {
-    concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${cleanTopic.toLowerCase()}. Thiết kế mẫu chứng từ/bảng biểu kế toán trung tính, không chứa bất kỳ logo, thương hiệu, quốc huy, biểu tượng cơ quan hay con dấu nào; trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`,
-    generation_prompt: `Clean professional Vietnamese accounting editorial illustration and explainer visual about ${cleanTopic.toLowerCase()}. Show a generic, unbranded invoice or accounting document sheet together with a structured accounting table containing clear rows, columns and adjustment blocks. Generic invoice/document/table only: absolutely NO company logo, NO government-style emblem, NO seal or stamp, NO brand name, and NO fake logo placeholder. The visual communicates invoice adjustment and bookkeeping using a completely new composition and neutral visual elements, without reproducing any original document layout, company identity or exact figures.`,
+    concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${formattedTopic}. ${brandDirectiveVn}`,
+    generation_prompt: `Clean professional Vietnamese accounting editorial illustration and explainer visual about ${formattedTopic}. Show a generic, unbranded invoice, accounting document sheet or modern accounting software interface together with a structured accounting table containing clear rows, columns and adjustment blocks. ${brandDirectiveEn} The visual communicates invoice adjustment and bookkeeping using a completely new composition and neutral visual elements, without reproducing any original document layout, company identity or exact figures.`,
   };
 }
 
@@ -724,20 +880,22 @@ export function parseArticleHtml(html: string): ParsedArticleResult {
       old_alt,
     });
 
+    const allowedBrands = extractAllowedSoftwareBrands(title);
     let vietnameseConcept: string;
     let englishPrompt: string;
 
     if (isDocOrTable) {
-      const docPrompt = buildDocumentTablePrompt(cleanHeading || title || 'nghiệp vụ kế toán');
+      const docPrompt = buildDocumentTablePrompt(cleanHeading || title || 'nghiệp vụ kế toán', allowedBrands);
       vietnameseConcept = docPrompt.concept;
       englishPrompt = docPrompt.generation_prompt;
     } else {
+      const formattedSubject = formatWithAllowedSoftwareBrands(cleanHeading ? cleanHeading.toLowerCase() : '', allowedBrands);
       vietnameseConcept = cleanHeading
-        ? `Chuyên viên kế toán doanh nghiệp Việt Nam đang làm việc với hồ sơ chứng từ liên quan đến ${cleanHeading.toLowerCase()} tại văn phòng hiện đại.`
+        ? `Chuyên viên kế toán doanh nghiệp Việt Nam đang làm việc với hồ sơ chứng từ liên quan đến ${formattedSubject} tại văn phòng hiện đại.`
         : `Chuyên viên tài chính kế toán rà soát số liệu và chứng từ thuế tại văn phòng doanh nghiệp hiện đại.`;
 
       englishPrompt = cleanHeading
-        ? `Documentary editorial photography of a Vietnamese finance professional reviewing invoice records related to ${cleanHeading.toLowerCase()} at a modern office desk in Vietnam, natural soft daylight, professional corporate atmosphere.`
+        ? `Documentary editorial photography of a Vietnamese finance professional reviewing invoice records related to ${formattedSubject} at a modern office desk in Vietnam, natural soft daylight, professional corporate atmosphere.`
         : `Documentary editorial photography of a Vietnamese accountant working at a modern office desk in Vietnam, natural window lighting, 50mm lens.`;
     }
 
@@ -1110,6 +1268,13 @@ export function analyzeArticleLocally(
 
   const slots: ImageSlotPlan[] = [];
 
+  const allowedSoftwareBrands = extractAllowedSoftwareBrands({
+    articleTitle: effectiveTitle,
+    effectiveArticleTitle: effectiveTitle,
+    articleUrl: options?.articleUrl,
+  });
+  const defaultCoverCaption = generateDefaultCoverHeadline(effectiveTitle, allowedSoftwareBrands);
+
   // Slot 1: Featured Image (16:9, ALWAYS GENERATE_AI)
   const featuredSlot: ImageSlotPlan = {
     slot_id: 'feature-1',
@@ -1128,14 +1293,16 @@ export function analyzeArticleLocally(
     generation_prompt: `High quality editorial journalism photo of a professional Vietnamese corporate accountant working in a contemporary office in Vietnam, daylight, shallow depth of field, 50mm f/2.8 lens, related to: "${effectiveTitle}".`,
     suggested_filename: generateFeaturedFilename(slug),
     suggested_alt: cleanEditorialAltText(
-      `Chuyên viên tài chính kế toán rà soát chứng từ liên quan ${effectiveTitle.toLowerCase()}`,
+      `Chuyên viên tài chính kế toán rà soát chứng từ liên quan ${formatWithAllowedSoftwareBrands(effectiveTitle.toLowerCase(), allowedSoftwareBrands)}`,
       effectiveTitle
     ),
+    cover_caption: defaultCoverCaption,
+    enable_text_in_image: true,
     aspect_ratio: '16:9',
     selected: true,
     status: 'pending',
     title: generateEditorialTitle('', '', effectiveTitle, 0),
-    caption: generateEditorialCaption('', '', effectiveTitle),
+    caption: generateEditorialCaption('', '', effectiveTitle, allowedSoftwareBrands),
     credit: 'Kế Toán Diệu Tâm',
     show_caption: false,
     show_credit: false,
@@ -1248,7 +1415,10 @@ export function analyzeArticleLocally(
     s.concept = s.suggested_concept;
     if (!s.generation_prompt || s.generation_prompt.includes('50mm lens')) {
       if (isDocumentOrTableVisual(s)) {
-        const docPrompt = buildDocumentTablePrompt(s.context_heading || s.title || effectiveTitle);
+        const docPrompt = buildDocumentTablePrompt(
+          s.context_heading || s.title || effectiveTitle,
+          allowedSoftwareBrands
+        );
         s.generation_prompt = docPrompt.generation_prompt;
         if (!s.concept || s.concept.includes('văn phòng hiện đại')) {
           s.concept = docPrompt.concept;
