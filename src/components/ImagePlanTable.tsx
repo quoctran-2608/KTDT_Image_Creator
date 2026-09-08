@@ -390,7 +390,13 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
       </div>
 
       {/* 1. FEATURED IMAGE CARD (16:9) */}
-      {featuredSlot && (
+      {featuredSlot && (() => {
+        const isFeaturedSensitive = Boolean(
+          featuredSlot.is_sensitive_source ||
+          featuredSlot.is_sensitive_document ||
+          isDocumentOrTableVisual(featuredSlot)
+        );
+        return (
         <div className="bg-gradient-to-br from-teal-50/40 via-white to-teal-50/15 rounded-2xl border-2 border-teal-600/50 shadow-xs p-5 sm:p-6 overflow-hidden">
           {/* Card Top Header */}
           <div className="flex flex-wrap items-center justify-between gap-2.5 pb-4 mb-4 border-b border-teal-100">
@@ -426,79 +432,68 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                 <label className="block text-xs font-semibold text-slate-800 mb-1.5">
                   Chiến lược xử lý ảnh bìa:
                 </label>
-                {(() => {
-                  const isFeaturedSensitive = Boolean(
-                    featuredSlot.is_sensitive_source ||
-                    featuredSlot.is_sensitive_document ||
-                    isDocumentOrTableVisual(featuredSlot)
-                  );
-                  return (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleStrategyChange(actualFeaturedIdx, 'GENERATE_AI')}
-                          className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
-                            featuredSlot.processing_strategy === 'GENERATE_AI'
-                              ? 'border-teal-600 bg-teal-50/70 text-[#0F766E] shadow-2xs font-semibold'
-                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <Sparkles className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="text-xs font-bold block">Tạo hình mới bằng AI</span>
-                            <span className="text-[11px] text-slate-500 font-normal">
-                              Sinh ảnh nhiếp ảnh hiện đại, đóng dấu watermark bản quyền
-                            </span>
-                          </div>
-                        </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStrategyChange(actualFeaturedIdx, 'GENERATE_AI')}
+                    className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
+                      featuredSlot.processing_strategy === 'GENERATE_AI'
+                        ? 'border-teal-600 bg-teal-50/70 text-[#0F766E] shadow-2xs font-semibold'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-xs font-bold block">Tạo hình mới bằng AI</span>
+                      <span className="text-[11px] text-slate-500 font-normal">
+                        Sinh ảnh nhiếp ảnh hiện đại, đóng dấu watermark bản quyền
+                      </span>
+                    </div>
+                  </button>
 
-                        <button
-                          type="button"
-                          disabled={isFeaturedSensitive}
-                          title={
-                            isFeaturedSensitive
-                              ? 'Không áp dụng cho hóa đơn, chứng từ, bảng biểu hoặc tài liệu nhạy cảm.'
-                              : undefined
-                          }
-                          onClick={() => {
-                            if (!isFeaturedSensitive) {
-                              handleStrategyChange(actualFeaturedIdx, 'GENERATE_FROM_SOURCE_AI');
-                            }
-                          }}
-                          className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all ${
-                            isFeaturedSensitive
-                              ? 'border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed opacity-60'
-                              : featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI'
-                              ? 'border-amber-600 bg-amber-50/70 text-amber-900 shadow-2xs font-semibold cursor-pointer'
-                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer'
-                          }`}
-                        >
-                          <FileText className={`w-4 h-4 shrink-0 mt-0.5 ${isFeaturedSensitive ? 'text-slate-400' : 'text-amber-600'}`} />
-                          <div>
-                            <span className="text-xs font-bold block">Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
-                            <span className="text-[11px] text-slate-500 font-normal">
-                              {isFeaturedSensitive
-                                ? 'Không áp dụng cho tài liệu, hóa đơn hoặc bảng biểu nhạy cảm'
-                                : 'AI phân tích và tạo ảnh mới với cùng chủ đề, tránh sao chép y hệt'}
-                            </span>
-                          </div>
-                        </button>
-                      </div>
-                      {isFeaturedSensitive && (
-                        <p className="text-[11px] text-amber-800 font-medium mt-1 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                          <span>Hóa đơn/Bảng biểu/Tài liệu: Chỉ áp dụng Tạo hình mới bằng AI (Explainer Visual) để bảo mật thông tin.</span>
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
+                  <button
+                    type="button"
+                    disabled={isFeaturedSensitive}
+                    title={
+                      isFeaturedSensitive
+                        ? 'Không áp dụng cho hóa đơn, chứng từ, bảng biểu hoặc tài liệu nhạy cảm.'
+                        : undefined
+                    }
+                    onClick={() => {
+                      if (!isFeaturedSensitive) {
+                        handleStrategyChange(actualFeaturedIdx, 'GENERATE_FROM_SOURCE_AI');
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all ${
+                      isFeaturedSensitive
+                        ? 'border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed opacity-60'
+                        : featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI'
+                        ? 'border-amber-600 bg-amber-50/70 text-amber-900 shadow-2xs font-semibold cursor-pointer'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer'
+                    }`}
+                  >
+                    <FileText className={`w-4 h-4 shrink-0 mt-0.5 ${isFeaturedSensitive ? 'text-slate-400' : 'text-amber-600'}`} />
+                    <div>
+                      <span className="text-xs font-bold block">Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
+                      <span className="text-[11px] text-slate-500 font-normal">
+                        {isFeaturedSensitive
+                          ? 'Không áp dụng cho tài liệu, hóa đơn hoặc bảng biểu nhạy cảm'
+                          : 'AI phân tích và tạo ảnh mới với cùng chủ đề, tránh sao chép y hệt'}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+                {isFeaturedSensitive && (
+                  <p className="text-[11px] text-amber-800 font-medium mt-1 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span>Hóa đơn/Bảng biểu/Tài liệu: Chỉ áp dụng Tạo hình mới bằng AI (Explainer Visual) để bảo mật thông tin.</span>
+                  </p>
+                )}
               </div>
 
               {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
               {featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
-                !(featuredSlot.is_sensitive_source || featuredSlot.is_sensitive_document || isDocumentOrTableVisual(featuredSlot)) &&
+                !isFeaturedSensitive &&
                 !hasUsableOriginalSource(featuredSlot) && (
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -560,10 +555,12 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                     )}
                   </div>
                   {/* Reference Image Control for AI */}
-                  <SlotReferenceImageControl
-                    slot={featuredSlot}
-                    onUpdateSlot={(fields) => onUpdateSlot(actualFeaturedIdx, fields)}
-                  />
+                  {!isFeaturedSensitive && (
+                    <SlotReferenceImageControl
+                      slot={featuredSlot}
+                      onUpdateSlot={(fields) => onUpdateSlot(actualFeaturedIdx, fields)}
+                    />
+                  )}
                 </div>
               )}
 
@@ -734,7 +731,8 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 2. INLINE IMAGES SECTION */}
       <div className="space-y-4">
@@ -1013,7 +1011,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                     )}
                   </div>
                       {/* Reference Image Control for AI */}
-                      {isAi && (
+                      {isAi && !isSlotSensitive && (
                         <SlotReferenceImageControl
                           slot={slot}
                           onUpdateSlot={(fields) => onUpdateSlot(originalIdx, fields)}

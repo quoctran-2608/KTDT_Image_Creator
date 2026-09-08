@@ -1285,9 +1285,28 @@ ${negativeConstraints}`;
   try {
     const parts: any[] = [];
 
-    // Optional reference image guidance for AI generation
+    // Safest simple rule: check if slot represents a sensitive document/table/source
+    const isSensitiveVisual = Boolean(
+      slot.is_sensitive_source ||
+      slot.is_sensitive_document ||
+      isDocumentOrTableVisual(slot)
+    );
+
     const isSourceAiStrategy = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
-    const useReference = isSourceAiStrategy || (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none');
+
+    if (isSensitiveVisual) {
+      if (isSourceAiStrategy) {
+        throw new Error('Không cho phép gửi dữ liệu điểm ảnh (source pixels) của hóa đơn, bảng biểu hoặc tài liệu nhạy cảm tới mô hình sinh ảnh.');
+      }
+      if (slot.reference_image) {
+        slot.reference_image.enabled = false;
+      }
+    }
+
+    // Optional reference image guidance for AI generation (strictly disabled/ignored for sensitive visuals)
+    const useReference =
+      !isSensitiveVisual &&
+      (isSourceAiStrategy || Boolean(slot.reference_image?.enabled && slot.reference_image?.choice !== 'none'));
     
     if (useReference) {
       let rawBuffer = null;
