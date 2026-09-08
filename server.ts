@@ -334,7 +334,7 @@ function getAnalysisClient(): { ai: GoogleGenAI; model: string } | null {
         project: serverVertexConfig.projectId.trim(),
         location: serverVertexConfig.location || 'global',
       }),
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
     };
   }
   const apiKey = process.env.GEMINI_API_KEY;
@@ -348,7 +348,7 @@ function getAnalysisClient(): { ai: GoogleGenAI; model: string } | null {
           },
         },
       }),
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
     };
   }
   return null;
@@ -668,108 +668,106 @@ app.post('/api/analyze-article', async (req, res) => {
         s.processing_strategy === 'NEEDS_DECISION' ? 'needs_decision' : 'recommended';
     });
 
-    if (ai && analysisClient) {
+        if (ai && analysisClient) {
       try {
-        const promptText = `Bạn là chuyên gia biên tập hình ảnh cho báo chí kinh tế, thuế, kế toán doanh nghiệp Việt Nam (KTDT).
-Nhiệm vụ: Phân tích bài viết và xây dựng kế hoạch phân loại, xử lý hình ảnh dựa trên CẢ HAI nguồn bằng chứng:
-1. Bằng chứng ngữ cảnh văn bản (tiêu đề, heading mục, đoạn văn xung quanh, src, alt).
-2. Bằng chứng thị giác thực tế (xem trực tiếp nội dung các bức ảnh đính kèm nếu có).
-
+        const analyzeFeatured = async () => {
+          const promptText = `Bạn là chuyên gia biên tập hình ảnh cho báo chí kinh tế, thuế, kế toán doanh nghiệp Việt Nam (KTDT).
 Tiêu đề bài viết: "${effectiveArticleTitle}"
 Tóm tắt: "${excerpt || 'Không có'}"
 Slug: "${slug}"
 
-Danh sách ${images.length} vị trí ảnh trong bài viết:
-${images
-  .map((img, i) => {
-    const slotId = `inline-${i + 1}`;
-    const hasVisual = slotImageBuffers.has(slotId);
-    const slotObj = slots.find((s) => s.slot_id === slotId);
-    return `
-[Vị trí ảnh inline #${i + 1}]
-- Slot ID: ${slotId}
-- Nguồn ảnh cũ (src): ${img.old_src}
-- Alt cũ: ${img.old_alt || 'Trống'}
-- Tiêu đề mục (heading): ${img.context_heading || 'Không có'}
-- Đoạn văn trước ảnh: ${img.context_before || 'Không có'}
-- Đoạn văn sau ảnh: ${img.context_after || 'Không có'}
-- Phương thức tìm ảnh: ${slotObj?.source_image?.source_status_label || 'Chưa rõ'}
-- URL ảnh đã xác định: ${slotObj?.source_resolved_url || 'Chưa có'}
-- Phân tích thị giác: ${hasVisual ? 'ĐÃ CÓ ảnh thực tế đính kèm bên dưới' : 'KHÔNG thể tải ảnh thực tế (chỉ phân tích văn bản)'}
-- Heuristic ban đầu: ${img.heuristic_classification} (${img.heuristic_reason})
+Nhiệm vụ: Đề xuất ý tưởng (concept), câu lệnh tạo ảnh (prompt) và các metadata cho ảnh đại diện chính (Featured Image).
+Ảnh này KHÔNG có hình ảnh gốc đính kèm, hoàn toàn tạo mới từ ý tưởng văn bản.
+
+YÊU CẦU:
+- featured_concept: Ý tưởng bằng Tiếng Việt (chuyên nghiệp, văn phòng).
+- featured_generation_prompt: Bằng Tiếng Anh, chuẩn nhiếp ảnh báo chí editorial.
+- featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt (5-10 từ) ngắn gọn, mạnh mẽ dựa trên Tiêu đề bài viết.
+- featured_alt, featured_title, featured_caption: Theo quy chuẩn báo chí tiếng Việt.
+- enable_text_in_image: true (vì featured luôn có text).
 `;
-  })
-  .join('\n')}
-
-QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
-1. QUY TẮC PHÁT HIỆN MÂU THUẪN GIỮA THỊ GIÁC VÀ VĂN BẢN (TEXT-VISUAL CONFLICT):
-   - Bằng chứng thị giác thực tế luôn có trọng lượng cao hơn alt text cũ hoặc ngữ cảnh văn bản xung quanh.
-   - Nếu alt text hoặc văn bản xung quanh nói về "Bản chụp biểu mẫu thuế", "Hóa đơn", "Chứng từ", "Bản scan", nhưng hình ảnh thực tế cho thấy một người làm việc, xe ô tô, cảnh vật, ảnh stock văn phòng:
-     + Đánh dấu \`text_visual_conflict = true\`.
-     + Không phân loại thành KEEP_ORIGINAL.
-     + Nếu ảnh là stock/ảnh minh họa chung, phân loại là REPLACE_AI (hoặc MANUAL_REVIEW nếu chưa rõ).
-     + Nêu rõ trong \`visual_description\` và \`reason\` rằng hình ảnh thực tế khác với mô tả văn bản.
-
-2. NGUYÊN TẮC PHÂN LOẠI KẾT HỢP THỊ GIÁC & VĂN BẢN:
-   - TUYỆT ĐỐI KHÔNG phân loại KEEP_ORIGINAL chỉ vì bài viết hay văn bản xung quanh nói về hợp đồng, thuế, luật, hóa đơn.
-   - Bằng chứng thị giác (khi có ảnh đính kèm, visual_analysis_available = true):
-     + Nếu ảnh thực tế rõ ràng là bản chụp/scan công văn, tờ khai, biểu mẫu nhà nước có mộc đỏ, chữ ký, con dấu, logo đối tác/tạp chí => KEEP_ORIGINAL, confidence: 'high'.
-     + Nếu ảnh thực tế là bảng biểu số liệu chi tiết, biểu đồ tài chính, ảnh chụp màn hình phần mềm thực tế (screenshot MISA, eTax...) => MANUAL_REVIEW, confidence: 'high' hoặc 'medium'.
-     + Nếu ảnh thực tế là ảnh stock người làm việc, văn phòng, họp bàn, bắt tay, laptop, hoặc ảnh minh họa chung => REPLACE_AI, confidence: 'high'.
-   - Khi KHÔNG có ảnh thực tế đính kèm (visual_analysis_available = false - chỉ có ngữ cảnh văn bản):
-     + ĐẶC BIỆT CẨN TRỌNG với các loại ảnh nhạy cảm: bản scan/chụp biểu mẫu, screenshots, bảng số liệu, biểu đồ, mẫu tờ khai, con dấu mộc đỏ, chữ ký, logo, tài liệu nguồn:
-       TUYỆT ĐỐI KHÔNG tự động kết luận KEEP_ORIGINAL trừ khi có bằng chứng cực kỳ chắc chắn (như đường dẫn URL file /logo.png).
-       BẮT BUỘC phân loại là: MANUAL_REVIEW, confidence: 'low', visual_analysis_available: false, reason: "Chưa phân tích được ảnh thực tế; quyết định hiện dựa trên ngữ cảnh văn bản."
-     + Dựa trên src/alt: nếu rõ ràng là stock/placeholder hoặc alt có "ảnh minh họa" => REPLACE_AI, confidence: 'high'.
-     + Nếu thông tin mâu thuẫn hoặc không đủ bằng chứng => MANUAL_REVIEW, confidence: 'low', reason: "Chưa phân tích được ảnh thực tế; quyết định hiện dựa trên ngữ cảnh văn bản."
-
-3. TIÊU CHUẨN MÔ TẢ ẢNH (AUTO-CLEAN ALT TEXT):
-   - TUYỆT ĐỐI KHÔNG chứa từ ngữ mô tả nguồn gốc hoặc trạng thái: "ảnh stock", "ảnh minh họa", "ảnh cũ", "hình cũ", "placeholder", "stock", "cũ".
-   - Alt text phải là câu văn mô tả TRỰC TIẾP nội dung thị giác của bức ảnh, viết bằng Tiếng Việt tự nhiên, súc tích, chuẩn trợ năng (accessibility) và biên tập báo chí.
-
-4. CẤU TRÚC Ý TƯỞNG HÌNH ẢNH (2 LỚP):
-   - "concept" (Ý tưởng hình ảnh - Tiếng Việt tự nhiên cho biên tập viên).
-   - "generation_prompt" (Prompt tạo ảnh Tiếng Anh chi tiết cho Vertex AI).
-   - "visual_description": Tóm tắt ngắn gọn những gì mắt người thực sự nhìn thấy trong bức ảnh (nếu có ảnh).
-   - "textual_description": Tóm tắt ngắn gọn những gì văn bản / alt xung quanh đề cập.
-   - "text_visual_conflict": true nếu có sự mâu thuẫn giữa hình ảnh thực tế và văn bản/alt, false nếu thống nhất.
-
-5. TÁI TẠO SIÊU DỮ LIỆU BÁO CHÍ (EDITORIAL METADATA):
-   - TUYỆT ĐỐI KHÔNG dùng chuỗi thô từ tên tệp không dấu (như "Cach lam so sach ke toan tren excel") làm alt, title hay caption.
-   - BẮT BUỘC tái tạo toàn diện bằng Tiếng Việt tự nhiên chuẩn mực, có dấu thanh trang trọng:
-     + alt: Văn bản thay thế tự nhiên mô tả nội dung ảnh (VD: "Cửa sổ bảng tính Excel dùng để theo dõi và lập sổ sách kế toán.").
-     + title: Tiêu đề ảnh súc tích, 5-8 từ, có dấu (VD: "Lập sổ sách kế toán trên Excel").
-     + caption: Chú thích ảnh giải thích ý nghĩa ngữ cảnh trong bài viết (VD: "Mẫu bảng tính hỗ trợ kế toán theo dõi và tổng hợp sổ sách trên Excel.").
-6. HEADLINE ẢNH BÌA (FEATURED COVER CAPTION):
-   - Đề xuất MỘT câu chữ tiếng Việt (5-10 từ) dựa trên Tiêu đề bài viết và Tóm tắt, để in trực tiếp lên ảnh Featured.
-   - Yêu cầu: rõ, mạnh, dễ đọc, đúng nội dung, không clickbait, không thêm số liệu không căn cứ, không copy nguyên tiêu đề quá dài.
-   - Cung cấp vào thuộc tính featured_cover_caption.
-`;
-
-        // Assemble multimodal parts: text prompt + inlineData for each available image
-        const contentsParts: any[] = [{ text: promptText }];
-
-        // Check featured image buffer if available
-        if (slotImageBuffers.has('feature-1')) {
-          const fb = slotImageBuffers.get('feature-1')!;
-          contentsParts.push({
-            text: `\n--- [Dữ liệu hình ảnh thực tế của Slot feature-1 (${slots[0].old_src})] ---`,
-          });
-          contentsParts.push({
-            inlineData: {
-              mimeType: fb.mimeType,
-              data: fb.buffer.toString('base64'),
-            },
-          });
-        }
-
-        images.forEach((img, i) => {
-          const slotId = `inline-${i + 1}`;
-          if (slotImageBuffers.has(slotId)) {
-            const bufObj = slotImageBuffers.get(slotId)!;
+          const contentsParts: any[] = [{ text: promptText }];
+          if (slotImageBuffers.has('feature-1')) {
+            const fb = slotImageBuffers.get('feature-1');
+            contentsParts.push({ text: `\n--- [Dữ liệu hình ảnh thực tế của Slot feature-1] ---` });
             contentsParts.push({
-              text: `\n--- [Dữ liệu hình ảnh thực tế của Slot ${slotId} (${img.old_src})] ---`,
+              inlineData: {
+                mimeType: fb.mimeType,
+                data: fb.buffer.toString('base64'),
+              },
             });
+          }
+
+          const response = await ai.models.generateContent({
+            model: analysisClient.model,
+            contents: [{ role: 'user', parts: contentsParts }],
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  featured_concept: { type: 'STRING' },
+                  featured_generation_prompt: { type: 'STRING' },
+                  featured_alt: { type: 'STRING' },
+                  featured_title: { type: 'STRING' },
+                  featured_caption: { type: 'STRING' },
+                  featured_cover_caption: { type: 'STRING' },
+                  enable_text_in_image: { type: 'BOOLEAN' }
+                }
+              }
+            }
+          });
+          const result = JSON.parse(response.text);
+          const targetSlot = slots[0];
+          if (targetSlot) {
+            targetSlot.suggested_concept = result.featured_concept || targetSlot.suggested_concept;
+            targetSlot.generation_prompt = result.featured_generation_prompt || targetSlot.generation_prompt;
+            targetSlot.suggested_alt = result.featured_alt || targetSlot.suggested_alt;
+            targetSlot.title = result.featured_title;
+            targetSlot.caption = result.featured_caption;
+            targetSlot.cover_caption = result.featured_cover_caption;
+            targetSlot.enable_text_in_image = result.enable_text_in_image ?? true;
+            targetSlot.visual_analysis_status = 'success';
+          }
+        };
+
+        const inlinePromises = images.map(async (img, i) => {
+          const slotId = `inline-${i + 1}`;
+          const slotObj = slots.find((s) => s.slot_id === slotId);
+          if (!slotObj) return;
+          const hasVisual = slotImageBuffers.has(slotId);
+          
+          const promptText = `Bạn là chuyên gia biên tập hình ảnh báo chí (KTDT).
+Tiêu đề bài viết: "${effectiveArticleTitle}"
+Tóm tắt: "${excerpt || 'Không có'}"
+
+Phân tích ảnh nguồn sau đây:
+- Vị trí ảnh: ${slotId}
+- Nguồn ảnh cũ: ${img.old_src}
+- Alt cũ: ${img.old_alt || 'Trống'}
+- Tiêu đề mục: ${img.context_heading || 'Không có'}
+- Đoạn văn trước: ${img.context_before || 'Không có'}
+- Đoạn văn sau: ${img.context_after || 'Không có'}
+- Phân tích thị giác: ${hasVisual ? 'ĐÃ CÓ ảnh đính kèm.' : 'KHÔNG có ảnh đính kèm, chỉ dùng văn bản.'}
+
+QUY TẮC:
+1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice").
+2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, screenshot phần mềm chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
+3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật.
+4. Xác định "classification":
+   - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
+   - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
+   - Nếu mâu thuẫn giữa chữ và ảnh -> MANUAL_REVIEW
+5. Nếu GENERATE_FROM_SOURCE_AI:
+   - Ý TƯỞNG TẠO ẢNH: AI sẽ tạo MỘT ẢNH MỚI. Ảnh mới phải GIỮ Ý NGHĨA CHÍNH của ảnh cũ, nhưng KHÁC ĐỦ NHIỀU để không bị xem là bắt chước (thay đổi góc máy, bố cục, ánh sáng).
+   - Nếu ảnh gốc có chữ nổi bật -> "enable_text_in_image: true", và gợi ý lại nội dung chữ trong "cover_caption" (viết lại cho hay, không copy nguyên văn).
+   - "generation_prompt" (Tiếng Anh) phải ghi rõ: "preserve the same core topic, do NOT make a near-duplicate, create a clearly new composition."
+`;
+
+          const contentsParts: any[] = [{ text: promptText }];
+          if (hasVisual) {
+            const bufObj = slotImageBuffers.get(slotId);
+            contentsParts.push({ text: `\n--- [Dữ liệu hình ảnh] ---` });
             contentsParts.push({
               inlineData: {
                 mimeType: bufObj.mimeType,
@@ -777,236 +775,100 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
               },
             });
           }
-        });
 
-        const response = await ai.models.generateContent({
-          model: analysisClient.model,
-          contents: [
-            {
-              role: 'user',
-              parts: contentsParts,
-            },
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                featured_concept: { type: Type.STRING },
-                featured_generation_prompt: { type: Type.STRING },
-                featured_alt: { type: Type.STRING },
-                featured_title: { type: Type.STRING },
-                featured_caption: { type: Type.STRING },
-                featured_cover_caption: { type: Type.STRING },
-                inline_updates: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      slot_id: { type: Type.STRING },
-                      classification: {
-                        type: Type.STRING,
-                        description: 'REPLACE_AI, KEEP_ORIGINAL, MANUAL_REVIEW, or IGNORE',
-                      },
-                      confidence: {
-                        type: Type.STRING,
-                        description: 'high, medium, or low',
-                      },
-                      visual_analysis_available: {
-                        type: Type.BOOLEAN,
-                      },
-                      reason: { type: Type.STRING },
-                      concept: { type: Type.STRING },
-                      generation_prompt: { type: Type.STRING },
-                      filename: { type: Type.STRING },
-                      alt: { type: Type.STRING },
-                      title: { type: Type.STRING },
-                      caption: { type: Type.STRING },
-                      visual_description: { type: Type.STRING },
-                      textual_description: { type: Type.STRING },
-                      text_visual_conflict: { type: Type.BOOLEAN },
-                    },
-                    required: [
-                      'slot_id',
-                      'classification',
-                      'confidence',
-                      'visual_analysis_available',
-                      'reason',
-                      'concept',
-                      'generation_prompt',
-                      'filename',
-                      'alt',
-                      'title',
-                      'caption',
-                    ],
-                  },
-                },
-              },
-              required: [
-                'featured_concept',
-                'featured_generation_prompt',
-                'featured_alt',
-                'featured_title',
-                'featured_caption',
-                'featured_cover_caption',
-                'inline_updates',
-              ],
-            },
-          },
-        });
-
-        if (response.text) {
-          const aiResult = JSON.parse(response.text);
-          if (aiResult.featured_concept) {
-            slots[0].suggested_concept = aiResult.featured_concept;
-            slots[0].concept = aiResult.featured_concept;
-          }
-          if (aiResult.featured_generation_prompt) {
-            slots[0].generation_prompt = aiResult.featured_generation_prompt;
-          }
-          if (aiResult.featured_alt) {
-            const cleaned = cleanEditorialAltText(aiResult.featured_alt, title);
-            slots[0].suggested_alt = cleaned;
-            slots[0].alt = cleaned;
-          }
-          if (aiResult.featured_title) {
-            slots[0].title = aiResult.featured_title;
-          }
-          if (aiResult.featured_caption) {
-            slots[0].caption = aiResult.featured_caption;
-          }
-          if (aiResult.featured_cover_caption) {
-            slots[0].cover_caption = aiResult.featured_cover_caption;
-          }
-
-          // Featured visual analysis status
-          if (slotImageBuffers.has('feature-1')) {
-            slots[0].visual_analysis_status = 'success';
-            slots[0].visual_analysis_available = true;
-          } else {
-            slots[0].visual_analysis_status = 'unavailable';
-            slots[0].visual_analysis_available = false;
-          }
-          slots[0].processing_strategy = 'GENERATE_AI';
-          slots[0].processing_strategy_status = 'recommended';
-          slots[0].selected = true;
-
-          if (Array.isArray(aiResult.inline_updates)) {
-            aiResult.inline_updates.forEach((update: any) => {
-              const target = slots.find((s) => s.slot_id === update.slot_id);
-              if (target) {
-                const hasBuffer = slotImageBuffers.has(target.slot_id);
-
-                // SEPARATE SOURCE RETRIEVAL FROM VISUAL ANALYSIS:
-                // Visual analysis status is success ONLY if pixels were available and AI analyzed them
-                if (hasBuffer && update.visual_analysis_available !== false) {
-                  target.visual_analysis_status = 'success';
-                  target.visual_analysis_available = true;
-                } else {
-                  target.visual_analysis_status = 'unavailable';
-                  target.visual_analysis_available = false;
-                }
-
-                if (
-                  ['REPLACE_AI', 'KEEP_ORIGINAL', 'MANUAL_REVIEW', 'IGNORE'].includes(
-                    update.classification
-                  )
-                ) {
-                  target.classification = update.classification as ImageClassification;
-                }
-                if (['high', 'medium', 'low'].includes(update.confidence)) {
-                  target.confidence = update.confidence;
-                  target.classification_confidence = update.confidence;
-                }
-
-                // REFINED PROCESSING STRATEGY LOGIC:
-                // When visual analysis succeeds with high confidence and no conflict:
-                // automatically recommend one of: GENERATE_AI or REBUILD_FROM_SOURCE.
-                // When confidence is low or evidence conflicts or manual review:
-                // set NEEDS_DECISION and processing_strategy_status = 'needs_decision'.
-                const isHighConfidenceNoConflict =
-                  target.confidence === 'high' &&
-                  !update.text_visual_conflict &&
-                  target.classification !== 'MANUAL_REVIEW';
-
-                if (target.visual_analysis_status === 'success' && isHighConfidenceNoConflict) {
-                  if (target.classification === 'KEEP_ORIGINAL') {
-                    target.processing_strategy = 'REBUILD_FROM_SOURCE';
-                    target.is_sensitive_source = true;
-                    target.processing_strategy_status = 'recommended';
-                    target.selected = true;
-                  } else {
-                    target.processing_strategy = 'GENERATE_AI';
-                    target.processing_strategy_status = 'recommended';
-                    target.selected = true;
+          try {
+            const response = await ai.models.generateContent({
+              model: analysisClient.model,
+              contents: [{ role: 'user', parts: contentsParts }],
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'OBJECT',
+                  properties: {
+                    visual_type: { type: 'STRING' },
+                    has_text: { type: 'BOOLEAN' },
+                    text_density: { type: 'STRING' },
+                    primary_headline: { type: 'STRING' },
+                    is_sensitive_document: { type: 'BOOLEAN' },
+                    classification: { type: 'STRING', description: 'GENERATE_FROM_SOURCE_AI, IGNORE, MANUAL_REVIEW' },
+                    confidence: { type: 'STRING', description: 'high, medium, low' },
+                    reason: { type: 'STRING' },
+                    concept: { type: 'STRING' },
+                    generation_prompt: { type: 'STRING' },
+                    alt: { type: 'STRING' },
+                    title: { type: 'STRING' },
+                    caption: { type: 'STRING' },
+                    cover_caption: { type: 'STRING' },
+                    enable_text_in_image: { type: 'BOOLEAN' },
+                    visual_description: { type: 'STRING' },
+                    textual_description: { type: 'STRING' }
                   }
-                } else {
-                  // Low confidence, conflict, or manual review
-                  target.processing_strategy = 'NEEDS_DECISION';
-                  target.processing_strategy_status = 'needs_decision';
-                  target.selected = false;
-                }
-
-                if (update.reason) target.reason = update.reason;
-                if (update.concept) {
-                  target.suggested_concept = update.concept;
-                  target.concept = update.concept;
-                }
-                if (update.generation_prompt) {
-                  target.generation_prompt = update.generation_prompt;
-                }
-                if (update.filename) {
-                  const cleaned = slugifyVietnamese(update.filename, 60);
-                  target.suggested_filename = ensureWebpExtension(cleaned);
-                }
-                if (update.alt) {
-                  const cleanedAlt = cleanEditorialAltText(
-                    update.alt,
-                    target.context_heading || title
-                  );
-                  target.suggested_alt = cleanedAlt;
-                  target.alt = cleanedAlt;
-                }
-                if (update.title) {
-                  target.title = update.title;
-                }
-                if (update.caption) {
-                  target.caption = update.caption;
-                }
-                if (update.visual_description) {
-                  target.visual_description = update.visual_description;
-                }
-                if (update.textual_description) {
-                  target.textual_description = update.textual_description;
-                }
-                if (typeof update.text_visual_conflict === 'boolean') {
-                  target.text_visual_conflict = update.text_visual_conflict;
                 }
               }
             });
-          }
-        }
-      } catch (geminiErr) {
-        console.warn('Gemini optimization fallback to heuristics:', geminiErr);
-        slots.forEach((s) => {
-          s.visual_analysis_status = 'failed';
-          s.visual_analysis_available = false;
-          if (s.slot_id === 'feature-1') {
-            s.processing_strategy = 'GENERATE_AI';
-            s.processing_strategy_status = 'recommended';
-            s.selected = true;
-          } else {
-            if (s.is_sensitive_source || s.confidence === 'low' || s.classification === 'MANUAL_REVIEW') {
-              s.processing_strategy = 'NEEDS_DECISION';
-              s.processing_strategy_status = 'needs_decision';
-              s.selected = false;
+            const result = JSON.parse(response.text);
+            
+            slotObj.classification = result.classification === 'GENERATE_FROM_SOURCE_AI' ? 'REPLACE_AI' : (result.classification || slotObj.classification);
+            
+            if (result.classification === 'GENERATE_FROM_SOURCE_AI') {
+              slotObj.processing_strategy = 'GENERATE_FROM_SOURCE_AI';
+              slotObj.processing_strategy_status = 'recommended';
+              slotObj.selected = true;
+            } else if (result.classification === 'KEEP_ORIGINAL') {
+              slotObj.processing_strategy = 'REBUILD_FROM_SOURCE';
+              slotObj.processing_strategy_status = 'recommended';
+              slotObj.selected = true;
+            } else if (result.is_sensitive_document) {
+              slotObj.processing_strategy = 'NEEDS_DECISION';
+              slotObj.processing_strategy_status = 'needs_decision';
+              slotObj.selected = false;
             } else {
-              s.processing_strategy = 'GENERATE_AI';
-              s.processing_strategy_status = 'recommended';
-              s.selected = true;
+              slotObj.processing_strategy = 'NEEDS_DECISION';
+              slotObj.processing_strategy_status = 'needs_decision';
+              slotObj.selected = false;
             }
+            
+            slotObj.confidence = result.confidence || slotObj.confidence;
+            slotObj.reason = result.reason || slotObj.reason;
+            if (result.concept) {
+              slotObj.suggested_concept = result.concept;
+              slotObj.concept = result.concept;
+            }
+            slotObj.generation_prompt = result.generation_prompt || slotObj.generation_prompt;
+            
+            if (result.alt) {
+              slotObj.suggested_alt = result.alt;
+              slotObj.alt = result.alt;
+            }
+            slotObj.title = result.title;
+            slotObj.caption = result.caption;
+            
+            slotObj.visual_type = result.visual_type;
+            slotObj.has_text = result.has_text;
+            slotObj.text_density = result.text_density;
+            slotObj.primary_headline = result.primary_headline;
+            slotObj.is_sensitive_source = result.is_sensitive_document;
+            slotObj.cover_caption = result.cover_caption;
+            slotObj.enable_text_in_image = result.enable_text_in_image;
+            slotObj.visual_description = result.visual_description;
+            slotObj.textual_description = result.textual_description;
+            
+            slotObj.visual_analysis_status = 'success';
+            slotObj.visual_analysis_available = hasVisual;
+            
+            if (result.is_sensitive_document) {
+              slotObj.reason = "Không khuyến nghị AI tạo lại từ ảnh gốc (ảnh chứa dữ liệu biểu mẫu/tài liệu). " + slotObj.reason;
+            }
+          } catch (e) {
+            console.error(`AI analysis failed for ${slotId}:`, e);
+            slotObj.visual_analysis_status = 'failed';
+            slotObj.visual_analysis_available = false;
           }
         });
+
+        await Promise.allSettled([analyzeFeatured(), ...inlinePromises]);
+      } catch (err: any) {
+        console.error('AI Multimodal Classification Error:', err);
       }
     } else {
       // Vertex AI not configured
@@ -1023,7 +885,7 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
             s.processing_strategy_status = 'needs_decision';
             s.selected = false;
             s.reason =
-              'Vertex AI chưa được cấu hình. Hệ thống hiện chỉ dựa trên ngữ cảnh bài viết; hình ảnh nhạy cảm cần biên tập viên quyết định.';
+              'AI chưa được cấu hình. Hình ảnh nhạy cảm cần biên tập viên quyết định.';
           } else {
             s.processing_strategy = 'GENERATE_AI';
             s.processing_strategy_status = 'recommended';
@@ -1033,7 +895,6 @@ QUY TẮC PHÂN LOẠI & BIÊN TẬP HÌNH ẢNH:
         }
       });
     }
-
     // Safeguard 1: Ensure feature-1 is always REPLACE_AI and selected
     if (slots[0]) {
       slots[0].classification = 'REPLACE_AI';
@@ -1269,11 +1130,11 @@ export async function generateImageWithVertex(
   let textRenderingDirective = '';
   let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   
-  if (isFeatured && slot.cover_caption && slot.cover_caption.trim()) {
+  if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
     textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
     negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Do not create any fake corporate logos. Do not create any fake watermarks. Do not create fake stamps or government seals. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
-  } else if (isFeatured) {
-    // If featured but no text is requested
+  } else if (isFeatured || slot.enable_text_in_image === false) {
+    // Ensure no text if not enabled
     negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   }
 
@@ -1316,9 +1177,11 @@ ${negativeConstraints}`;
     const parts: any[] = [];
 
     // Optional reference image guidance for AI generation
-    if (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none') {
+    const useReference = (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none') || slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
+    if (useReference) {
+      let choice = slot.reference_image?.choice || 'current_source';
       let refDataUrl = slot.reference_image.data_url;
-      if (!refDataUrl && slot.reference_image.choice === 'current_source') {
+      if (!refDataUrl && choice === 'current_source') {
         const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
         if (potentialUrl && potentialUrl.startsWith('data:')) {
           refDataUrl = potentialUrl;
@@ -1410,7 +1273,7 @@ ${negativeConstraints}`;
 
       finalImageDataUrl = imageDataUrl;
 
-      if (isFeatured && slot.cover_caption && slot.cover_caption.trim()) {
+      if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
         const valRes = await validateGeneratedHeadline(ai, finalImageDataUrl, slot.cover_caption);
         coverTextDetected = valRes.detectedText;
         if (valRes.success) {

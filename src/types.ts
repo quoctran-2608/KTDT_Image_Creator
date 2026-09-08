@@ -1,6 +1,6 @@
 export type ImageClassification = 'REPLACE_AI' | 'KEEP_ORIGINAL' | 'MANUAL_REVIEW' | 'IGNORE';
 
-export type ProcessingStrategy = 'GENERATE_AI' | 'REBUILD_FROM_SOURCE' | 'NEEDS_DECISION';
+export type ProcessingStrategy = 'GENERATE_AI' | 'GENERATE_FROM_SOURCE_AI' | 'REBUILD_FROM_SOURCE' | 'NEEDS_DECISION';
 
 // Explicitly separated statuses (prevent conflating pixel retrieval with AI visual analysis)
 export type SourceRetrievalStatus = 'not_attempted' | 'loading' | 'success' | 'failed';
@@ -157,6 +157,14 @@ export interface ImageSlotPlan {
   brand_applied?: boolean;
   brand_profile?: string;
   is_sensitive_source?: boolean;
+
+  // AI Recreate specific toggles & analysis
+  enable_text_in_image?: boolean;
+  visual_type?: string;
+  has_text?: boolean;
+  text_density?: 'none' | 'low' | 'medium' | 'high';
+  primary_headline?: string;
+  primary_caption?: string;
 
   // Source image discovery & manual input
   source_image?: SourceImageInfo;

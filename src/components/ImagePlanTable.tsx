@@ -85,7 +85,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
     (s) => s.processing_strategy === 'GENERATE_AI'
   ).length;
   const rebuildSourceCount = plan.filter(
-    (s) => s.processing_strategy === 'REBUILD_FROM_SOURCE'
+    (s) => s.processing_strategy === 'GENERATE_FROM_SOURCE_AI'
   ).length;
   const needsDecisionCount = plan.filter(
     (s) => s.processing_strategy === 'NEEDS_DECISION'
@@ -93,7 +93,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
   const missingSourceCount = plan.filter(
     (s) =>
       s.selected &&
-      s.processing_strategy === 'REBUILD_FROM_SOURCE' &&
+      s.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
       !s.source_image?.available &&
       !s.source_image?.thumbnail_data_url &&
       !s.image_data_url &&
@@ -105,7 +105,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
     onUpdateSlot(index, {
       processing_strategy: strategy,
       processing_strategy_status: 'manually_selected',
-      classification: isAi ? 'REPLACE_AI' : 'KEEP_ORIGINAL',
+      classification: strategy === 'GENERATE_AI' || strategy === 'GENERATE_FROM_SOURCE_AI' ? 'REPLACE_AI' : 'KEEP_ORIGINAL',
       selected: true,
       reason: isAi
         ? 'Biên tập viên chọn tạo hình ảnh mới bằng AI.'
@@ -199,7 +199,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Mọi ảnh bài viết đều kết thúc bằng asset mới tối ưu WebP. Với biểu mẫu số liệu, hệ thống tự động tái tạo bảo toàn không làm sai lệch thông tin.
+              Mọi ảnh bài viết đều kết thúc bằng asset mới tối ưu WebP. Với biểu mẫu số liệu, hệ thống ưu tiên Tạo ảnh mới bằng AI hoặc người dùng có thể giữ nguyên bản.
             </p>
           </div>
 
@@ -350,7 +350,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                 Cần biên tập viên quyết định {needsDecisionCount} vị trí ảnh:
               </strong>
               <span>
-                Theo quy chuẩn xuất bản, mọi vị trí ảnh bài viết bắt buộc phải có phương án xử lý rõ ràng (Tạo hình mới bằng AI hoặc Tạo bản mới từ ảnh gốc) trước khi tiến hành xuất bản.
+                Theo quy chuẩn xuất bản, mọi vị trí ảnh bài viết bắt buộc phải có phương án xử lý rõ ràng (Tạo hình mới bằng AI hoặc Tạo ảnh mới dựa trên ảnh gốc bằng AI) trước khi tiến hành xuất bản.
               </span>
             </div>
           </div>
@@ -415,33 +415,33 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleStrategyChange(actualFeaturedIdx, 'REBUILD_FROM_SOURCE')}
+                    onClick={() => handleStrategyChange(actualFeaturedIdx, 'GENERATE_FROM_SOURCE_AI')}
                     className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
-                      featuredSlot.processing_strategy === 'REBUILD_FROM_SOURCE'
+                      featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI'
                         ? 'border-amber-600 bg-amber-50/70 text-amber-900 shadow-2xs font-semibold'
                         : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
                     <FileText className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <span className="text-xs font-bold block">Tái tạo từ ảnh gốc</span>
+                      <span className="text-xs font-bold block">Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
                       <span className="text-[11px] text-slate-500 font-normal">
-                        Chuẩn hóa WebP 16:9, giữ nguyên độ nét và số liệu gốc
+                        AI phân tích và tạo ảnh mới với cùng chủ đề, tránh sao chép y hệt
                       </span>
                     </div>
                   </button>
                 </div>
               </div>
 
-              {/* Warning if REBUILD_FROM_SOURCE but missing source image */}
-              {featuredSlot.processing_strategy === 'REBUILD_FROM_SOURCE' &&
+              {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
+              {featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
                 !featuredSlot.source_image?.available &&
                 !featuredSlot.source_image?.thumbnail_data_url &&
                 !featuredSlot.image_data_url &&
                 !featuredSlot.old_src && (
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tái tạo ảnh bìa. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
+                    <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tạo ảnh bìa mới dựa trên ảnh gốc. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
                   </div>
                 )}
 
@@ -468,23 +468,35 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                       Mô tả bối cảnh Việt Nam, tone màu sáng và trang phục công sở thực tế.
                     </p>
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-800 mb-1">
-                      Dòng chữ ảnh bìa (Cover Caption)
+                  <div className="flex flex-col gap-1 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer w-fit">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(featuredSlot.enable_text_in_image)}
+                        onChange={(e) =>
+                          onUpdateSlot(actualFeaturedIdx, { enable_text_in_image: e.target.checked })
+                        }
+                        className="w-4 h-4 text-[#0F766E] rounded border-slate-300 focus:ring-[#0F766E]"
+                      />
+                      <span className="text-xs font-semibold text-slate-800">Cho phép AI tạo chữ trong ảnh</span>
                     </label>
-                    <input
-                      type="text"
-                      value={featuredSlot.cover_caption || ""}
-                      onChange={(e) =>
-                        onUpdateSlot(actualFeaturedIdx, { cover_caption: e.target.value })
-                      }
-                      placeholder="Dòng chữ sẽ được AI vẽ trực tiếp lên ảnh bìa (để trống nếu không muốn chèn chữ)"
-                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
-                      Giới hạn 5-10 từ, tiếng Việt, rõ ràng và có dấu.
-                    </p>
+                    {featuredSlot.enable_text_in_image && (
+                      <div className="mt-2 pl-6">
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Nội dung chữ (Text/Headline)
+                        </label>
+                        <input
+                          type="text"
+                          value={featuredSlot.cover_caption || ""}
+                          onChange={(e) =>
+                            onUpdateSlot(actualFeaturedIdx, { cover_caption: e.target.value })
+                          }
+                          placeholder="Để trống để AI tự gợi ý, hoặc nhập nội dung cụ thể..."
+                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Giới hạn 5-10 từ, tiếng Việt có dấu.</p>
+                      </div>
+                    )}
                   </div>
                   {/* Reference Image Control for AI */}
                   <SlotReferenceImageControl
@@ -695,7 +707,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
             {inlineSlotsWithIndex.map(({ slot, index: originalIdx }, inlineOrder) => {
               const isNeedsDecision = slot.processing_strategy === 'NEEDS_DECISION';
               const isAi = slot.processing_strategy === 'GENERATE_AI';
-              const isRebuildSource = slot.processing_strategy === 'REBUILD_FROM_SOURCE';
+              const isRebuildSource = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
               const isExpanded = expandedDetails[slot.slot_id];
 
               return (
@@ -779,32 +791,32 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleStrategyChange(originalIdx, 'REBUILD_FROM_SOURCE')}
+                              onClick={() => handleStrategyChange(originalIdx, 'GENERATE_FROM_SOURCE_AI')}
                               className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 text-white font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
                             >
                               <FileText className="w-3.5 h-3.5" />
-                              <span>Chọn: Tạo bản mới từ ảnh gốc (Bảo toàn số liệu)</span>
+                              <span>Chọn: Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {/* Informational banner if REBUILD_FROM_SOURCE */}
+                      {/* Informational banner if GENERATE_FROM_SOURCE_AI */}
                       {isRebuildSource && !isNeedsDecision && (
                         <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
                           <FileText className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                           <div className="leading-relaxed">
                             <strong className="font-semibold block text-amber-950">
-                              Tạo bản mới từ ảnh gốc (Bảo toàn 100% số liệu &amp; pháp lý)
+                              Tạo ảnh mới dựa trên ảnh gốc bằng AI
                             </strong>
                             <span>
-                              Hệ thống sẽ tối ưu hóa định dạng WebP, chuẩn hóa tỷ lệ và thêm dải nhận diện thương hiệu ngoài lề nội dung, không vẽ lại các con số hay chữ ký.
+                              AI sẽ dùng ảnh gốc làm ý tưởng để tạo ra một bức ảnh hoàn toàn mới có cùng chủ đề, tránh sao chép y hệt bố cục cũ. (Lưu ý: Không dùng cho hóa đơn, tài liệu)
                             </span>
                           </div>
                         </div>
                       )}
 
-                      {/* Warning if REBUILD_FROM_SOURCE but missing source image */}
+                      {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
                       {isRebuildSource &&
                         !slot.source_image?.available &&
                         !slot.source_image?.thumbnail_data_url &&
@@ -812,7 +824,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                         !slot.old_src && (
                           <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                            <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tái tạo tài liệu này. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
+                            <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tạo ảnh mới dựa trên ảnh gốc. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
                           </div>
                         )}
 
@@ -836,7 +848,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => handleStrategyChange(originalIdx, 'REBUILD_FROM_SOURCE')}
+                          onClick={() => handleStrategyChange(originalIdx, 'GENERATE_FROM_SOURCE_AI')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                             isRebuildSource
                               ? 'bg-amber-800 text-white shadow-2xs'
@@ -844,7 +856,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                           }`}
                         >
                           <FileText className="w-3.5 h-3.5" />
-                          <span>Tạo bản mới từ ảnh gốc</span>
+                          <span>Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
                         </button>
                       </div>
 
@@ -868,23 +880,35 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                           />
                         </div>
                       )}
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-800 mb-1">
-                      Dòng chữ ảnh bìa (Cover Caption)
+                  <div className="flex flex-col gap-1 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer w-fit">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(slot.enable_text_in_image)}
+                        onChange={(e) =>
+                          onUpdateSlot(originalIdx, { enable_text_in_image: e.target.checked })
+                        }
+                        className="w-4 h-4 text-[#0F766E] rounded border-slate-300 focus:ring-[#0F766E]"
+                      />
+                      <span className="text-xs font-semibold text-slate-800">Cho phép AI tạo chữ trong ảnh</span>
                     </label>
-                    <input
-                      type="text"
-                      value={featuredSlot.cover_caption || ""}
-                      onChange={(e) =>
-                        onUpdateSlot(actualFeaturedIdx, { cover_caption: e.target.value })
-                      }
-                      placeholder="Dòng chữ sẽ được AI vẽ trực tiếp lên ảnh bìa (để trống nếu không muốn chèn chữ)"
-                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
-                      Giới hạn 5-10 từ, tiếng Việt, rõ ràng và có dấu.
-                    </p>
+                    {slot.enable_text_in_image && (
+                      <div className="mt-2 pl-6">
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Nội dung chữ (Text/Headline)
+                        </label>
+                        <input
+                          type="text"
+                          value={slot.cover_caption || ""}
+                          onChange={(e) =>
+                            onUpdateSlot(originalIdx, { cover_caption: e.target.value })
+                          }
+                          placeholder="Để trống để AI tự gợi ý, hoặc nhập nội dung cụ thể..."
+                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0F766E]"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Giới hạn 5-10 từ, tiếng Việt có dấu.</p>
+                      </div>
+                    )}
                   </div>
                       {/* Reference Image Control for AI */}
                       {isAi && (
@@ -1073,7 +1097,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
           </strong>
           {rebuildSourceCount > 0 && (
             <span className="text-amber-900 font-medium">
-              {' '}&bull; {rebuildSourceCount} ảnh tái tạo từ tài liệu gốc
+              {' '}&bull; {rebuildSourceCount} ảnh tạo mới dựa trên ảnh gốc
             </span>
           )}
           {needsDecisionCount > 0 ? (

@@ -108,7 +108,9 @@ export async function safeFetchImageBuffer(
     if (match) {
       try {
         const buf = Buffer.from(match[2], 'base64');
-        return { mimeType: match[1], buffer: buf };
+        const sharp = (await import('sharp')).default;
+        const optimizedBuffer = await sharp(buf).resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+        return { mimeType: 'image/webp', buffer: optimizedBuffer };
       } catch {
         return null;
       }
@@ -174,9 +176,17 @@ export async function safeFetchImageBuffer(
       if (buffer.length === 0 || buffer.length > maxSizeBytes) {
         return null;
       }
-
-      const finalMime = isImageMime ? mimeType : 'image/jpeg';
-      return { buffer, mimeType: finalMime };
+      try {
+        const sharp = (await import('sharp')).default;
+        const optimizedBuffer = await sharp(buffer)
+           .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+           .webp({ quality: 80 })
+           .toBuffer();
+        return { buffer: optimizedBuffer, mimeType: 'image/webp' };
+      } catch (e) {
+        console.error('Sharp optimization failed', e);
+        return null;
+      }
     } catch {
       return null;
     }
