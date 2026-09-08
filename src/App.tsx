@@ -382,7 +382,7 @@ export default function App() {
     }
 
     const requiresAi = selectedSlots.some(
-      (s) => s.processing_strategy === 'GENERATE_AI'
+      (s) => s.processing_strategy === 'GENERATE_AI' || s.processing_strategy === 'GENERATE_FROM_SOURCE_AI'
     );
 
     // Check Vertex AI configuration and credentials readiness if any slot needs AI
@@ -481,7 +481,7 @@ export default function App() {
       }
 
       // Strategy B: GENERATE_AI (photorealistic editorial photography via Vertex AI)
-      if (currentSlot.processing_strategy === 'GENERATE_AI') {
+      if (currentSlot.processing_strategy === 'GENERATE_AI' || currentSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI') {
         try {
           let imageDataUrl: string | null = null;
           let promptSummary = currentSlot.suggested_concept;

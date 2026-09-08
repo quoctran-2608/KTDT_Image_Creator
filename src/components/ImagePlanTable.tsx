@@ -101,15 +101,21 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
   ).length;
 
   const handleStrategyChange = (index: number, strategy: ProcessingStrategy) => {
-    const isAi = strategy === 'GENERATE_AI';
+    let reason = '';
+    if (strategy === 'GENERATE_AI') {
+      reason = 'Biên tập viên chọn tạo hình ảnh mới hoàn toàn bằng AI.';
+    } else if (strategy === 'GENERATE_FROM_SOURCE_AI') {
+      reason = 'Biên tập viên chọn dùng ảnh gốc làm tham chiếu để AI tạo một ảnh mới có cùng chủ đề nhưng bố cục và cách thể hiện khác rõ rệt.';
+    } else {
+      reason = 'Biên tập viên chọn tạo bản mới từ ảnh gốc bảo toàn 100% số liệu.';
+    }
+
     onUpdateSlot(index, {
       processing_strategy: strategy,
       processing_strategy_status: 'manually_selected',
       classification: strategy === 'GENERATE_AI' || strategy === 'GENERATE_FROM_SOURCE_AI' ? 'REPLACE_AI' : 'KEEP_ORIGINAL',
       selected: true,
-      reason: isAi
-        ? 'Biên tập viên chọn tạo hình ảnh mới bằng AI.'
-        : 'Biên tập viên chọn tạo bản mới từ ảnh gốc bảo toàn 100% số liệu.',
+      reason,
     });
   };
 
@@ -437,7 +443,8 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
               {featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
                 !featuredSlot.source_image?.available &&
                 !featuredSlot.source_image?.thumbnail_data_url &&
-                !featuredSlot.image_data_url &&
+                !featuredSlot.source_resolved_url &&
+                !featuredSlot.original_src &&
                 !featuredSlot.old_src && (
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -446,7 +453,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                 )}
 
               {/* Editor-Facing Vietnamese Concept and Reference Image */}
-              {featuredSlot.processing_strategy === 'GENERATE_AI' && (
+              {(featuredSlot.processing_strategy === 'GENERATE_AI' || featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI') && (
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-800 mb-1">
@@ -706,7 +713,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
           <div className="space-y-4">
             {inlineSlotsWithIndex.map(({ slot, index: originalIdx }, inlineOrder) => {
               const isNeedsDecision = slot.processing_strategy === 'NEEDS_DECISION';
-              const isAi = slot.processing_strategy === 'GENERATE_AI';
+              const isAi = slot.processing_strategy === 'GENERATE_AI' || slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
               const isRebuildSource = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
               const isExpanded = expandedDetails[slot.slot_id];
 
@@ -818,10 +825,11 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
 
                       {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
                       {isRebuildSource &&
-                        !slot.source_image?.available &&
-                        !slot.source_image?.thumbnail_data_url &&
-                        !slot.image_data_url &&
-                        !slot.old_src && (
+                            !slot.source_image?.available &&
+                            !slot.source_image?.thumbnail_data_url &&
+                            !slot.source_resolved_url &&
+                            !slot.original_src &&
+                            !slot.old_src && (
                           <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                             <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tạo ảnh mới dựa trên ảnh gốc. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>

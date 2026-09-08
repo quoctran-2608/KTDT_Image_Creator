@@ -33,6 +33,7 @@ import {
 import {
   safeFetchHtml,
   safeFetchImageBuffer,
+  normalizeImageForAiVision,
   parseLiveArticleHtml,
   discoverSingleSlotSource,
   inferBaseUrlFromArticleUrl,
@@ -628,9 +629,9 @@ app.post('/api/analyze-article', async (req, res) => {
     // Attach discovery results and default reference image settings
     const slotImageBuffers = new Map<string, { buffer: Buffer; mimeType: string }>();
 
-    discoveryResults.forEach((res) => {
+    for (const res of discoveryResults) {
       const targetSlot = slots.find((s) => s.slot_id === res.slot_id);
-      if (!targetSlot) return;
+      if (!targetSlot) continue;
 
       targetSlot.source_image = res.source_image;
       targetSlot.source_resolved_url = res.source_image.resolved_url;
@@ -641,10 +642,13 @@ app.post('/api/analyze-article', async (req, res) => {
       targetSlot.visual_analysis_available = Boolean(res.source_image.available);
 
       if (res.imageBuffer && res.mimeType) {
-        slotImageBuffers.set(res.slot_id, {
-          buffer: res.imageBuffer,
-          mimeType: res.mimeType,
-        });
+        const normalized = await normalizeImageForAiVision(res.imageBuffer);
+        if (normalized) {
+          slotImageBuffers.set(res.slot_id, {
+            buffer: normalized.buffer,
+            mimeType: normalized.mimeType,
+          });
+        }
       }
 
       // Configure default reference image (Disabled by default for all GENERATE_AI slots)
@@ -653,7 +657,7 @@ app.post('/api/analyze-article', async (req, res) => {
         choice: 'none',
         method: 'none',
       };
-    });
+    }
 
     // Step 4: If AI analysis is available (Vertex AI via ADC in production or Gemini API key in dev), enhance concepts, alt texts, and classifications
     const analysisClient = getAnalysisClient();
@@ -677,14 +681,17 @@ Tóm tắt: "${excerpt || 'Không có'}"
 Slug: "${slug}"
 
 Nhiệm vụ: Đề xuất ý tưởng (concept), câu lệnh tạo ảnh (prompt) và các metadata cho ảnh đại diện chính (Featured Image).
-Ảnh này KHÔNG có hình ảnh gốc đính kèm, hoàn toàn tạo mới từ ý tưởng văn bản.
+Phân tích thị giác (Nếu có ảnh đính kèm):
+1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice").
+2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
+3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật.
 
 YÊU CẦU:
-- featured_concept: Ý tưởng bằng Tiếng Việt (chuyên nghiệp, văn phòng).
-- featured_generation_prompt: Bằng Tiếng Anh, chuẩn nhiếp ảnh báo chí editorial.
-- featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt (5-10 từ) ngắn gọn, mạnh mẽ dựa trên Tiêu đề bài viết.
-- featured_alt, featured_title, featured_caption: Theo quy chuẩn báo chí tiếng Việt.
-- enable_text_in_image: true (vì featured luôn có text).
+- featured_concept: Ý tưởng bằng Tiếng Việt.
+- featured_generation_prompt: Bằng Tiếng Anh. Nếu có ảnh gốc đính kèm và không nhạy cảm, viết prompt dựa trên ý nghĩa của ảnh gốc nhưng tạo bố cục hoàn toàn mới.
+- featured_cover_caption: Đề xuất một câu tiêu đề tiếng Việt ngắn gọn.
+- featured_alt, featured_title, featured_caption: Theo quy chuẩn báo chí.
+- enable_text_in_image: true (vì ảnh bìa luôn có text) hoặc dựa trên ảnh gốc.
 `;
           const contentsParts: any[] = [{ text: promptText }];
           if (slotImageBuffers.has('feature-1')) {
@@ -698,6 +705,7 @@ YÊU CẦU:
             });
           }
 
+          try {
           const response = await ai.models.generateContent({
             model: analysisClient.model,
             contents: [{ role: 'user', parts: contentsParts }],
@@ -712,7 +720,12 @@ YÊU CẦU:
                   featured_title: { type: 'STRING' },
                   featured_caption: { type: 'STRING' },
                   featured_cover_caption: { type: 'STRING' },
-                  enable_text_in_image: { type: 'BOOLEAN' }
+                  enable_text_in_image: { type: 'BOOLEAN' },
+                  visual_type: { type: 'STRING' },
+                  has_text: { type: 'BOOLEAN' },
+                  text_density: { type: 'STRING' },
+                  primary_headline: { type: 'STRING' },
+                  is_sensitive_document: { type: 'BOOLEAN' }
                 }
               }
             }
@@ -720,6 +733,7 @@ YÊU CẦU:
           const result = JSON.parse(response.text);
           const targetSlot = slots[0];
           if (targetSlot) {
+            const hasVisual = slotImageBuffers.has('feature-1');
             targetSlot.suggested_concept = result.featured_concept || targetSlot.suggested_concept;
             targetSlot.generation_prompt = result.featured_generation_prompt || targetSlot.generation_prompt;
             targetSlot.suggested_alt = result.featured_alt || targetSlot.suggested_alt;
@@ -727,8 +741,23 @@ YÊU CẦU:
             targetSlot.caption = result.featured_caption;
             targetSlot.cover_caption = result.featured_cover_caption;
             targetSlot.enable_text_in_image = result.enable_text_in_image ?? true;
-            targetSlot.visual_analysis_status = 'success';
+            
+            targetSlot.visual_type = result.visual_type;
+            targetSlot.has_text = result.has_text;
+            targetSlot.text_density = result.text_density;
+            targetSlot.primary_headline = result.primary_headline;
+            targetSlot.is_sensitive_source = result.is_sensitive_document;
+            
+            targetSlot.visual_analysis_status = hasVisual ? 'success' : 'unavailable';
+            targetSlot.visual_analysis_available = hasVisual;
           }
+        } catch (e) {
+          console.error('Featured AI analysis failed:', e);
+          if (slots[0]) {
+            slots[0].visual_analysis_status = 'failed';
+            slots[0].visual_analysis_available = false;
+          }
+        }
         };
 
         const inlinePromises = images.map(async (img, i) => {
@@ -809,6 +838,8 @@ QUY TẮC:
             const result = JSON.parse(response.text);
             
             slotObj.classification = result.classification === 'GENERATE_FROM_SOURCE_AI' ? 'REPLACE_AI' : (result.classification || slotObj.classification);
+            slotObj.enable_text_in_image = result.enable_text_in_image ?? Boolean(result.primary_headline);
+            slotObj.cover_caption = result.cover_caption || result.primary_headline || '';
             
             if (result.classification === 'GENERATE_FROM_SOURCE_AI') {
               slotObj.processing_strategy = 'GENERATE_FROM_SOURCE_AI';
@@ -853,7 +884,7 @@ QUY TẮC:
             slotObj.visual_description = result.visual_description;
             slotObj.textual_description = result.textual_description;
             
-            slotObj.visual_analysis_status = 'success';
+            slotObj.visual_analysis_status = hasVisual ? 'success' : 'unavailable';
             slotObj.visual_analysis_available = hasVisual;
             
             if (result.is_sensitive_document) {
@@ -895,10 +926,12 @@ QUY TẮC:
         }
       });
     }
-    // Safeguard 1: Ensure feature-1 is always REPLACE_AI and selected
+    // Safeguard 1: Ensure feature-1 is selected and uses an AI strategy
     if (slots[0]) {
       slots[0].classification = 'REPLACE_AI';
-      slots[0].processing_strategy = 'GENERATE_AI';
+      if (slots[0].processing_strategy !== 'GENERATE_FROM_SOURCE_AI') {
+        slots[0].processing_strategy = 'GENERATE_AI';
+      }
       slots[0].processing_strategy_status = 'recommended';
       slots[0].selected = true;
       slots[0].suggested_alt = cleanEditorialAltText(slots[0].suggested_alt || '', title);
@@ -1177,25 +1210,47 @@ ${negativeConstraints}`;
     const parts: any[] = [];
 
     // Optional reference image guidance for AI generation
-    const useReference = (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none') || slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
+    const isSourceAiStrategy = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
+    const useReference = isSourceAiStrategy || (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none');
+    
     if (useReference) {
-      let choice = slot.reference_image?.choice || 'current_source';
-      let refDataUrl = slot.reference_image.data_url;
-      if (!refDataUrl && choice === 'current_source') {
-        const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
+      let refDataUrl = undefined;
+      
+      if (isSourceAiStrategy) {
+        // Must use original source priority for GENERATE_FROM_SOURCE_AI
+        const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src || slot.original_src;
         if (potentialUrl && potentialUrl.startsWith('data:')) {
           refDataUrl = potentialUrl;
         } else if (potentialUrl && potentialUrl.startsWith('http')) {
           try {
+            // Must fetch safely
             const fetched = await safeFetchImageBuffer(potentialUrl);
             if (fetched && fetched.buffer) {
-               refDataUrl = `data:${fetched.mimeType};base64,${fetched.buffer.toString('base64')}`;
-            } else {
-               refDataUrl = undefined;
+               refDataUrl = 'data:' + fetched.mimeType + ';base64,' + fetched.buffer.toString('base64');
             }
           } catch (err) {
-            console.warn(`Could not fetch reference image from ${potentialUrl}, skipping reference.`, err);
-            refDataUrl = undefined;
+            console.warn('Could not fetch reference image from url', err);
+          }
+        }
+        
+        if (!refDataUrl) {
+          throw new Error('Không tìm thấy ảnh gốc hợp lệ để tạo ảnh mới dựa trên ảnh nguồn.');
+        }
+      } else {
+        // Standard reference image choice
+        let choice = slot.reference_image?.choice || 'current_source';
+        refDataUrl = slot.reference_image?.data_url;
+        if (!refDataUrl && choice === 'current_source') {
+          const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
+          if (potentialUrl && potentialUrl.startsWith('data:')) {
+            refDataUrl = potentialUrl;
+          } else if (potentialUrl && potentialUrl.startsWith('http')) {
+            try {
+              const fetched = await safeFetchImageBuffer(potentialUrl);
+              if (fetched && fetched.buffer) {
+                 refDataUrl = 'data:' + fetched.mimeType + ';base64,' + fetched.buffer.toString('base64');
+              }
+            } catch (err) {}
           }
         }
       }
@@ -1212,12 +1267,15 @@ ${negativeConstraints}`;
         }
       }
     }
-
-    const referenceGuidance =
-      parts.length > 0
-        ? '\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.'
-        : '';
-
+    
+    let referenceGuidance = '';
+    if (parts.length > 0) {
+      if (isSourceAiStrategy) {
+        referenceGuidance = '\n\nSOURCE RECREATION DIRECTIVE:\n- Preserve the same core meaning/topic\n- Create a genuinely new composition\n- Do NOT create a near-duplicate\n- Do NOT trace the original\n- Do NOT copy the exact layout\n- Change framing/camera angle\n- Change subject arrangement\n- Change background/environment where appropriate\n- Change lighting/mood\n- Use different visual treatment\n- Preserve semantic meaning, not visual duplication';
+      } else {
+        referenceGuidance = '\n\nREFERENCE IMAGE GUIDANCE: A reference image is provided above solely for subject matter, camera angle, and composition inspiration. Generate an original, brand-new editorial photograph that reinterprets the concept in an authentic Vietnamese business setting. Do NOT copy pixel-for-pixel.';
+      }
+    }
     parts.push({ text: prompt + variationDirective + referenceGuidance });
 
     let attempts = 0;

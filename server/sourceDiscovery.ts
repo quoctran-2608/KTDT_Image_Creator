@@ -108,9 +108,7 @@ export async function safeFetchImageBuffer(
     if (match) {
       try {
         const buf = Buffer.from(match[2], 'base64');
-        const sharp = (await import('sharp')).default;
-        const optimizedBuffer = await sharp(buf).resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
-        return { mimeType: 'image/webp', buffer: optimizedBuffer };
+        return { mimeType: match[1], buffer: buf };
       } catch {
         return null;
       }
@@ -176,17 +174,8 @@ export async function safeFetchImageBuffer(
       if (buffer.length === 0 || buffer.length > maxSizeBytes) {
         return null;
       }
-      try {
-        const sharp = (await import('sharp')).default;
-        const optimizedBuffer = await sharp(buffer)
-           .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
-           .webp({ quality: 80 })
-           .toBuffer();
-        return { buffer: optimizedBuffer, mimeType: 'image/webp' };
-      } catch (e) {
-        console.error('Sharp optimization failed', e);
-        return null;
-      }
+      const finalMime = isImageMime ? mimeType : 'image/jpeg';
+      return { buffer, mimeType: finalMime };
     } catch {
       return null;
     }
@@ -865,4 +854,18 @@ export async function discoverSingleSlotSource(
       error: 'Không thể tải ảnh từ URL trong HTML hoặc bài viết xuất bản.',
     },
   };
+}
+
+export async function normalizeImageForAiVision(buffer: Buffer): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const optimizedBuffer = await sharp(buffer)
+       .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+       .webp({ quality: 80 })
+       .toBuffer();
+    return { buffer: optimizedBuffer, mimeType: 'image/webp' };
+  } catch (e) {
+    console.error('normalizeImageForAiVision failed', e);
+    return null;
+  }
 }
