@@ -820,6 +820,7 @@ QUY TẮC:
                     has_text: { type: 'BOOLEAN' },
                     text_density: { type: 'STRING' },
                     primary_headline: { type: 'STRING' },
+                    primary_caption: { type: 'STRING' },
                     is_sensitive_document: { type: 'BOOLEAN' },
                     classification: { type: 'STRING', description: 'GENERATE_FROM_SOURCE_AI, IGNORE, MANUAL_REVIEW' },
                     confidence: { type: 'STRING', description: 'high, medium, low' },
