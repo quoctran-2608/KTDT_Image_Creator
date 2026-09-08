@@ -684,7 +684,7 @@ Nhiệm vụ: Đề xuất ý tưởng (concept), câu lệnh tạo ảnh (promp
 Phân tích thị giác (Nếu có ảnh đính kèm):
 1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice").
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
-3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật.
+3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 
 YÊU CẦU:
 - featured_concept: Ý tưởng bằng Tiếng Việt.
@@ -725,6 +725,7 @@ YÊU CẦU:
                   has_text: { type: 'BOOLEAN' },
                   text_density: { type: 'STRING' },
                   primary_headline: { type: 'STRING' },
+                  primary_caption: { type: 'STRING' },
                   is_sensitive_document: { type: 'BOOLEAN' }
                 }
               }
@@ -746,6 +747,7 @@ YÊU CẦU:
             targetSlot.has_text = result.has_text;
             targetSlot.text_density = result.text_density;
             targetSlot.primary_headline = result.primary_headline;
+            targetSlot.primary_caption = result.primary_caption;
             targetSlot.is_sensitive_source = result.is_sensitive_document;
             
             targetSlot.visual_analysis_status = hasVisual ? 'success' : 'unavailable';
@@ -782,7 +784,7 @@ Phân tích ảnh nguồn sau đây:
 QUY TẮC:
 1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice").
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, screenshot phần mềm chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
-3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật.
+3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 4. Xác định "classification":
    - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
    - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
@@ -842,9 +844,15 @@ QUY TẮC:
             slotObj.cover_caption = result.cover_caption || result.primary_headline || '';
             
             if (result.classification === 'GENERATE_FROM_SOURCE_AI') {
-              slotObj.processing_strategy = 'GENERATE_FROM_SOURCE_AI';
-              slotObj.processing_strategy_status = 'recommended';
-              slotObj.selected = true;
+              if (hasVisual) {
+                slotObj.processing_strategy = 'GENERATE_FROM_SOURCE_AI';
+                slotObj.processing_strategy_status = 'recommended';
+                slotObj.selected = true;
+              } else {
+                slotObj.processing_strategy = 'GENERATE_AI';
+                slotObj.processing_strategy_status = 'recommended';
+                slotObj.selected = true;
+              }
             } else if (result.classification === 'KEEP_ORIGINAL') {
               slotObj.processing_strategy = 'REBUILD_FROM_SOURCE';
               slotObj.processing_strategy_status = 'recommended';
@@ -879,8 +887,6 @@ QUY TẮC:
             slotObj.text_density = result.text_density;
             slotObj.primary_headline = result.primary_headline;
             slotObj.is_sensitive_source = result.is_sensitive_document;
-            slotObj.cover_caption = result.cover_caption;
-            slotObj.enable_text_in_image = result.enable_text_in_image;
             slotObj.visual_description = result.visual_description;
             slotObj.textual_description = result.textual_description;
             
@@ -1214,60 +1220,82 @@ ${negativeConstraints}`;
     const useReference = isSourceAiStrategy || (slot.reference_image?.enabled && slot.reference_image?.choice !== 'none');
     
     if (useReference) {
-      let refDataUrl = undefined;
-      
+      let rawBuffer = null;
+      let rawMime = '';
+
       if (isSourceAiStrategy) {
         // Must use original source priority for GENERATE_FROM_SOURCE_AI
-        const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src || slot.original_src;
+        const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.original_src || slot.old_src;
         if (potentialUrl && potentialUrl.startsWith('data:')) {
-          refDataUrl = potentialUrl;
+          const match = potentialUrl.match(/^data:([a-zA-Z0-9+/]+);base64,(.+)$/);
+          if (match) {
+            rawMime = match[1];
+            rawBuffer = Buffer.from(match[2], 'base64');
+          }
         } else if (potentialUrl && potentialUrl.startsWith('http')) {
           try {
             // Must fetch safely
             const fetched = await safeFetchImageBuffer(potentialUrl);
             if (fetched && fetched.buffer) {
-               refDataUrl = 'data:' + fetched.mimeType + ';base64,' + fetched.buffer.toString('base64');
+               rawBuffer = fetched.buffer;
+               rawMime = fetched.mimeType;
             }
           } catch (err) {
             console.warn('Could not fetch reference image from url', err);
           }
         }
         
-        if (!refDataUrl) {
+        if (!rawBuffer) {
           throw new Error('Không tìm thấy ảnh gốc hợp lệ để tạo ảnh mới dựa trên ảnh nguồn.');
         }
       } else {
         // Standard reference image choice
         let choice = slot.reference_image?.choice || 'current_source';
-        refDataUrl = slot.reference_image?.data_url;
-        if (!refDataUrl && choice === 'current_source') {
-          const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
-          if (potentialUrl && potentialUrl.startsWith('data:')) {
-            refDataUrl = potentialUrl;
-          } else if (potentialUrl && potentialUrl.startsWith('http')) {
-            try {
-              const fetched = await safeFetchImageBuffer(potentialUrl);
-              if (fetched && fetched.buffer) {
-                 refDataUrl = 'data:' + fetched.mimeType + ';base64,' + fetched.buffer.toString('base64');
-              }
-            } catch (err) {}
+        let potentialUrl = slot.reference_image?.data_url;
+        if (!potentialUrl && choice === 'current_source') {
+          potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.old_src;
+        }
+        if (potentialUrl && potentialUrl.startsWith('data:')) {
+          const match = potentialUrl.match(/^data:([a-zA-Z0-9+/]+);base64,(.+)$/);
+          if (match) {
+            rawMime = match[1];
+            rawBuffer = Buffer.from(match[2], 'base64');
           }
+        } else if (potentialUrl && potentialUrl.startsWith('http')) {
+          try {
+            const fetched = await safeFetchImageBuffer(potentialUrl);
+            if (fetched && fetched.buffer) {
+               rawBuffer = fetched.buffer;
+               rawMime = fetched.mimeType;
+            }
+          } catch (err) {}
         }
       }
 
-      if (refDataUrl && refDataUrl.startsWith('data:')) {
-        const match = refDataUrl.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);
-        if (match) {
-          parts.push({
-            inlineData: {
-              mimeType: match[1],
-              data: match[2],
-            },
-          });
+      if (rawBuffer) {
+        // Normalize using existing helper
+        let finalBuffer = rawBuffer;
+        let finalMime = rawMime;
+        try {
+          const normalized = await normalizeImageForAiVision(rawBuffer);
+          if (normalized) {
+            finalBuffer = normalized.buffer;
+            finalMime = normalized.mimeType;
+          }
+        } catch(e) {
+          if (isSourceAiStrategy) {
+            throw new Error('Lỗi khi chuẩn hóa ảnh nguồn: ' + e.message);
+          }
         }
+
+        parts.push({
+          inlineData: {
+            mimeType: finalMime,
+            data: finalBuffer.toString('base64')
+          }
+        });
       }
     }
-    
     let referenceGuidance = '';
     if (parts.length > 0) {
       if (isSourceAiStrategy) {

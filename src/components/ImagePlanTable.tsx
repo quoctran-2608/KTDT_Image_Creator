@@ -43,6 +43,17 @@ interface ImagePlanTableProps {
   onBackToStep1?: () => void;
 }
 
+
+const hasUsableOriginalSource = (slot: ImageSlotPlan): boolean => {
+  return Boolean(
+    slot.source_image?.thumbnail_data_url ||
+    (slot.source_image?.available && slot.source_image?.resolved_url) ||
+    slot.source_resolved_url ||
+    slot.original_src ||
+    (slot.old_src && (slot.old_src.startsWith('http') || slot.old_src.startsWith('data:')))
+  );
+};
+
 export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
   analysis,
   plan,
@@ -94,10 +105,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
     (s) =>
       s.selected &&
       s.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
-      !s.source_image?.available &&
-      !s.source_image?.thumbnail_data_url &&
-      !s.image_data_url &&
-      !s.old_src
+      !hasUsableOriginalSource(s)
   ).length;
 
   const handleStrategyChange = (index: number, strategy: ProcessingStrategy) => {
@@ -441,11 +449,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
 
               {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
               {featuredSlot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
-                !featuredSlot.source_image?.available &&
-                !featuredSlot.source_image?.thumbnail_data_url &&
-                !featuredSlot.source_resolved_url &&
-                !featuredSlot.original_src &&
-                !featuredSlot.old_src && (
+                !hasUsableOriginalSource(featuredSlot) && (
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                     <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tạo ảnh bìa mới dựa trên ảnh gốc. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
@@ -751,7 +755,7 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                       ) : isRebuildSource ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                           <FileText className="w-3.5 h-3.5 text-amber-700" />
-                          Tài liệu gốc &bull; Tái tạo bảo toàn số liệu
+                          AI &bull; Tạo mới dựa trên ảnh gốc
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-[#0F766E] border border-teal-200">
@@ -824,12 +828,8 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                       )}
 
                       {/* Warning if GENERATE_FROM_SOURCE_AI but missing source image */}
-                      {isRebuildSource &&
-                            !slot.source_image?.available &&
-                            !slot.source_image?.thumbnail_data_url &&
-                            !slot.source_resolved_url &&
-                            !slot.original_src &&
-                            !slot.old_src && (
+                      {slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
+                            !hasUsableOriginalSource(slot) && (
                           <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-medium">
                             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                             <span>⚠ Cần cung cấp ảnh nguồn để tiếp tục tạo ảnh mới dựa trên ảnh gốc. Dán hoặc tải ảnh lên ở thẻ bên trái.</span>
