@@ -4,6 +4,7 @@ import {
   generateFeaturedFilename,
   generateInlineFilename,
   makeUniqueFilenames,
+  deriveEffectiveArticleSlug,
 } from './slugify';
 import { ArticleAnalysis, ImageClassification, ImageSlotPlan, BrandProfile } from '../types';
 
@@ -1007,9 +1008,24 @@ export function updateArticleHtml(
  * Complete, fast local analysis and slot planning without network dependency.
  * Guaranteed to never fail or throw JSON syntax errors.
  */
-export function analyzeArticleLocally(htmlSource: string): ArticleAnalysis {
+export function analyzeArticleLocally(
+  htmlSource: string,
+  options?: { articleUrl?: string; articleTitle?: string }
+): ArticleAnalysis {
   const parsed = parseArticleHtml(htmlSource);
-  const { title, excerpt, slug, contentSelector, images, featuredImageInfo } = parsed;
+  const { title, excerpt, slug: parsedSlug, contentSelector, images, featuredImageInfo } = parsed;
+
+  const effectiveTitle =
+    typeof options?.articleTitle === 'string' && options.articleTitle.trim()
+      ? options.articleTitle.trim()
+      : title || 'Bài viết kinh tế thuế';
+
+  const slug = deriveEffectiveArticleSlug({
+    articleUrl: options?.articleUrl,
+    articleTitle: effectiveTitle,
+    parsedSlug,
+    fallback: 'bai-viet-kinh-te-thue',
+  });
 
   const slots: ImageSlotPlan[] = [];
 
@@ -1027,18 +1043,18 @@ export function analyzeArticleLocally(htmlSource: string): ArticleAnalysis {
     visual_analysis_status: 'unavailable',
     visual_analysis_available: false,
     reason: 'Ảnh đại diện chính (Featured Image) đại diện cho toàn bộ chủ đề bài viết.',
-    suggested_concept: `Chuyên viên kế toán doanh nghiệp Việt Nam làm việc tại văn phòng hiện đại, ánh sáng tự nhiên, liên quan chủ đề: "${title}"`,
-    generation_prompt: `High quality editorial journalism photo of a professional Vietnamese corporate accountant working in a contemporary office in Vietnam, daylight, shallow depth of field, 50mm f/2.8 lens, related to: "${title}".`,
+    suggested_concept: `Chuyên viên kế toán doanh nghiệp Việt Nam làm việc tại văn phòng hiện đại, ánh sáng tự nhiên, liên quan chủ đề: "${effectiveTitle}"`,
+    generation_prompt: `High quality editorial journalism photo of a professional Vietnamese corporate accountant working in a contemporary office in Vietnam, daylight, shallow depth of field, 50mm f/2.8 lens, related to: "${effectiveTitle}".`,
     suggested_filename: generateFeaturedFilename(slug),
     suggested_alt: cleanEditorialAltText(
-      `Chuyên viên tài chính kế toán rà soát chứng từ liên quan ${title.toLowerCase()}`,
-      title
+      `Chuyên viên tài chính kế toán rà soát chứng từ liên quan ${effectiveTitle.toLowerCase()}`,
+      effectiveTitle
     ),
     aspect_ratio: '16:9',
     selected: true,
     status: 'pending',
-    title: generateEditorialTitle('', '', title, 0),
-    caption: generateEditorialCaption('', '', title),
+    title: generateEditorialTitle('', '', effectiveTitle, 0),
+    caption: generateEditorialCaption('', '', effectiveTitle),
     credit: 'Kế Toán Diệu Tâm',
     show_caption: false,
     show_credit: false,
@@ -1159,7 +1175,8 @@ export function analyzeArticleLocally(htmlSource: string): ArticleAnalysis {
   const needs_decision_count = slots.filter((s) => s.processing_strategy === 'NEEDS_DECISION').length;
 
   return {
-    title,
+    title: effectiveTitle,
+    effective_article_title: effectiveTitle,
     excerpt,
     slug,
     content_container_selector: contentSelector,

@@ -71,6 +71,7 @@ export const SAMPLE_ARTICLES: SampleArticle[] = [
     id: 'giam-thue-gtgt',
     name: '2. Bài viết: Giảm thuế GTGT 2% (Có 1 ảnh minh họa + 1 bảng biểu so sánh)',
     description: 'Chứa 1 ảnh minh họa cuộc họp doanh nghiệp và 1 ảnh chụp bảng biểu thuế suất so sánh (cần duyệt tay).',
+    url: 'https://ketoandieutam.vn/chinh-sach-giam-thue-gtgt-2-nam-2026.html',
     html: `<!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -105,6 +106,7 @@ export const SAMPLE_ARTICLES: SampleArticle[] = [
     id: 'quyet-toan-tndn-no-inline',
     name: '3. Bài viết: 5 Lưu ý quyết toán thuế TNDN (KHÔNG có ảnh trong bài - Chỉ tạo 1 ảnh Featured)',
     description: 'Thử nghiệm trường hợp bài viết không chứa ảnh inline ban đầu -> Chỉ tạo đúng 1 ảnh Featured duy nhất, không tự ý bịa thêm ảnh.',
+    url: 'https://ketoandieutam.vn/5-luu-y-quyet-toan-thue-tndn.html',
     html: `<!DOCTYPE html>
 <html lang="vi">
 <head>

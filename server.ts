@@ -21,6 +21,7 @@ import {
   generateFeaturedFilename,
   generateInlineFilename,
   makeUniqueFilenames,
+  deriveEffectiveArticleSlug,
 } from './src/utils/slugify';
 import { ImageClassification, ImageSlotPlan, SourceDiscoverySummaryItem } from './src/types';
 import {
@@ -525,12 +526,19 @@ app.post('/api/analyze-article', async (req, res) => {
 
     // Step 1: Parse HTML and extract structure & inline images
     const parsed = parseArticleHtml(htmlSource);
-    const { title, excerpt, slug, contentSelector, images, featuredImageInfo } = parsed;
+    const { title, excerpt, slug: parsedSlug, contentSelector, images, featuredImageInfo } = parsed;
 
     const effectiveArticleTitle =
       typeof articleTitle === 'string' && articleTitle.trim()
         ? articleTitle.trim()
         : title || 'Bài viết kinh tế thuế';
+
+    const slug = deriveEffectiveArticleSlug({
+      articleUrl,
+      articleTitle: effectiveArticleTitle,
+      parsedSlug,
+      fallback: 'bai-viet-kinh-te-thue',
+    });
 
     // Build default slots from extracted images
     const slots: ImageSlotPlan[] = [];
@@ -1059,7 +1067,7 @@ QUY TẮC:
     const ignore_count = slots.filter((s) => s.classification === 'IGNORE').length;
 
     return res.json({
-      title,
+      title: effectiveArticleTitle,
       effective_article_title: effectiveArticleTitle,
       excerpt,
       slug,

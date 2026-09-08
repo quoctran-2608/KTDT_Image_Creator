@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ArticleAnalysis, ImageSlotPlan } from '../types';
 import { SAMPLE_ARTICLES, SampleArticle } from '../utils/sampleArticles';
+import { isValidHttpUrl } from '../utils/slugify';
 
 interface HtmlInputSectionProps {
   htmlSource: string;
@@ -68,6 +69,13 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
 
   // Track if baseUrl was manually edited by user
   const isBaseUrlManuallyEdited = useRef(false);
+
+  // Article Identity and Source Base URL validation
+  const isHtmlValid = Boolean(htmlSource && htmlSource.trim());
+  const isTitleValid = Boolean(articleTitle && articleTitle.trim());
+  const isArticleUrlValid = isValidHttpUrl(articleUrl);
+  const isBaseUrlValid = isValidHttpUrl(baseUrl);
+  const canAnalyze = isHtmlValid && isTitleValid && isArticleUrlValid && isBaseUrlValid && !isAnalyzing;
 
   // Close sample menu on outside click
   useEffect(() => {
@@ -275,7 +283,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
       <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
         <div className="mb-2">
           <label htmlFor="article-title" className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
-            Tiêu đề bài viết
+            Tiêu đề bài viết *
           </label>
           <p className="text-[11px] text-slate-500 mb-2">Tiêu đề giúp AI hiểu chủ đề chính và đề xuất dòng chữ phù hợp cho ảnh bìa.</p>
           <input
@@ -289,13 +297,13 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
         </div>
       </div>
 
-      {/* Optional: Original Article Website Source Information */}
+      {/* Original Article Website Source Information */}
       <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-[#0F766E]" />
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Nguồn ảnh bài viết gốc (Tùy chọn)
+              Nguồn ảnh bài viết gốc
             </h3>
           </div>
           <button
@@ -329,7 +337,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
               htmlFor="original-article-url-input"
               className="block text-[11px] font-semibold text-slate-700 mb-1"
             >
-              URL bài viết gốc:
+              URL bài viết gốc *
             </label>
             <div className="relative">
               <input
@@ -337,7 +345,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
                 type="url"
                 value={articleUrl}
                 onChange={(e) => handleArticleUrlChange(e.target.value)}
-                placeholder="https://mettasingingbowl.com/ktdieutam/example-article.html"
+                placeholder="https://ketoandieutam.vn/dau-tu-nang-cap-sua-chua-tai-san-co-dinh.html"
                 className="w-full h-9 px-3 text-xs bg-white text-slate-800 rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-[#0F766E] focus:border-[#0F766E] placeholder:text-slate-400"
               />
             </div>
@@ -349,7 +357,7 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
               htmlFor="base-url-publish-input"
               className="block text-[11px] font-semibold text-slate-700 mb-1"
             >
-              Base URL website / thư mục publish:
+              Base URL để tải ảnh gốc *
             </label>
             <div className="relative">
               <input
@@ -357,16 +365,15 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
                 type="url"
                 value={baseUrl}
                 onChange={(e) => handleBaseUrlChange(e.target.value)}
-                placeholder="https://mettasingingbowl.com/ktdieutam/"
+                placeholder="https://ketoandieutam.vn/"
                 className="w-full h-9 px-3 text-xs bg-white text-slate-800 rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-[#0F766E] focus:border-[#0F766E] placeholder:text-slate-400"
               />
             </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Tự động suy ra từ URL bài viết. Chỉ cần chỉnh nếu đường dẫn ảnh gốc không tải đúng.
+            </p>
           </div>
         </div>
-
-        <p className="text-[11px] text-slate-500 mt-2">
-          Hệ thống sẽ ưu tiên lấy ảnh từ bài viết đang xuất bản. Nếu không có URL bài viết, hệ thống sẽ thử ghép đường dẫn ảnh trong HTML với Base URL. Nếu vẫn không tải được ảnh, bạn có thể dán hoặc tải ảnh lên tại từng vị trí.
-        </p>
       </div>
 
       {/* Bottom Bar: Action & Sample selection */}
@@ -443,32 +450,40 @@ export const HtmlInputSection: React.FC<HtmlInputSectionProps> = ({
         </div>
 
         {/* Right: Primary CTA */}
-        <button
-          type="button"
-          id="analyze-html-btn"
-          onClick={() => {
-            onAnalyze();
-            setIsViewingSource(false);
-          }}
-          disabled={isAnalyzing || !htmlSource.trim()}
-          className={`w-full sm:w-auto h-11 px-6 rounded-xl font-semibold text-xs sm:text-sm text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            isAnalyzing || !htmlSource.trim()
-              ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
-              : 'bg-[#0F766E] hover:bg-[#115E59] active:scale-[0.99]'
-          }`}
-        >
-          {isAnalyzing ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Đang phân tích bài viết & tải ảnh nguồn...</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              <span>Phân tích bài viết</span>
-            </>
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto justify-end">
+          {!canAnalyze && !isAnalyzing && (
+            <p className="text-[11px] text-amber-700 sm:text-right font-medium">
+              Cần đủ Tiêu đề, URL bài viết gốc và Base URL hợp lệ để phân tích ảnh.
+            </p>
           )}
-        </button>
+
+          <button
+            type="button"
+            id="analyze-html-btn"
+            onClick={() => {
+              onAnalyze();
+              setIsViewingSource(false);
+            }}
+            disabled={!canAnalyze}
+            className={`w-full sm:w-auto h-11 px-6 rounded-xl font-semibold text-xs sm:text-sm text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              !canAnalyze
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                : 'bg-[#0F766E] hover:bg-[#115E59] active:scale-[0.99]'
+            }`}
+          >
+            {isAnalyzing ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Đang phân tích bài viết & tải ảnh nguồn...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>Phân tích bài viết</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -49,7 +49,7 @@ export function ensureWebpExtension(filename: string): string {
  * Generate semantic, standard featured image filename ending with -feature.webp
  */
 export function generateFeaturedFilename(articleSlug: string): string {
-  let base = slugifyVietnamese(articleSlug, 45);
+  let base = slugifyVietnamese(articleSlug, 65);
   base = base.replace(/-feature$/i, '');
   return `${base}-feature.webp`;
 }
@@ -102,4 +102,118 @@ export function makeUniqueFilenames(filenames: string[]): string[] {
   }
 
   return result;
+}
+
+/**
+ * Validate whether a string is a valid HTTP(S) URL
+ */
+export function isValidHttpUrl(urlString?: string): boolean {
+  if (!urlString || typeof urlString !== 'string') return false;
+  const trimmed = urlString.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely extract a canonical slug candidate from an article URL
+ * Rules:
+ * - Only HTTP(S)
+ * - Take last non-empty segment of pathname
+ * - Strip query/hash (handled by URL object)
+ * - Safe decodeURIComponent
+ * - Strip .html / .htm (case-insensitive)
+ * - Malformed URL does not crash
+ * - Root / index / generic URL without useful slug -> returns empty string (so it falls back to title)
+ */
+export function extractSlugFromUrl(urlStr?: string): string {
+  if (!isValidHttpUrl(urlStr)) return '';
+
+  try {
+    const parsed = new URL(urlStr!.trim());
+    let pathname = parsed.pathname;
+    try {
+      pathname = decodeURIComponent(pathname);
+    } catch {
+      // Safe fallback if decodeURIComponent fails
+    }
+
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return '';
+
+    let lastSegment = segments[segments.length - 1].trim();
+
+    // Strip .html or .htm extension
+    lastSegment = lastSegment.replace(/\.html?$/i, '').trim();
+
+    // Ignore generic index/root names
+    const genericNames = ['index', 'default', 'home', 'main', 'article', 'post', 'detail', 'news', 'tin-tuc', 'bai-viet'];
+    if (genericNames.includes(lastSegment.toLowerCase())) {
+      return '';
+    }
+
+    const slug = slugifyVietnamese(lastSegment, 65);
+    if (slug === 'anh-minh-hoa' || slug === 'hinh-anh' || !slug) {
+      return '';
+    }
+
+    return slug;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Derive effective canonical article slug with priority:
+ * 1. valid articleUrl
+ * 2. effectiveArticleTitle
+ * 3. parsed slug (from HTML)
+ * 4. safe fallback
+ */
+export function deriveEffectiveArticleSlug(params: {
+  articleUrl?: string;
+  articleTitle?: string;
+  parsedSlug?: string;
+  fallback?: string;
+}): string {
+  // 1. articleUrl
+  if (params.articleUrl) {
+    const urlSlug = extractSlugFromUrl(params.articleUrl);
+    if (urlSlug) {
+      return urlSlug;
+    }
+  }
+
+  // 2. effectiveArticleTitle
+  if (params.articleTitle && params.articleTitle.trim()) {
+    const titleSlug = slugifyVietnamese(params.articleTitle.trim(), 55);
+    if (
+      titleSlug &&
+      titleSlug !== 'anh-minh-hoa' &&
+      titleSlug !== 'hinh-anh' &&
+      titleSlug !== 'bai-viet-kinh-te-thue'
+    ) {
+      return titleSlug;
+    }
+  }
+
+  // 3. parsed slug
+  if (params.parsedSlug && params.parsedSlug.trim()) {
+    const cleanParsed = slugifyVietnamese(params.parsedSlug.trim(), 55);
+    if (
+      cleanParsed &&
+      cleanParsed !== 'anh-minh-hoa' &&
+      cleanParsed !== 'hinh-anh' &&
+      cleanParsed !== 'bai-viet-kinh-te-thue'
+    ) {
+      return cleanParsed;
+    }
+  }
+
+  // 4. fallback
+  return params.fallback || 'bai-viet-kinh-te-thue';
 }

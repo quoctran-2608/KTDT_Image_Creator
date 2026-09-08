@@ -19,6 +19,7 @@ import {
 import {
   updateArticleHtml,
   normalizeBasePath,
+  parseArticleHtml,
   analyzeArticleLocally,
   cleanEditorialAltText,
   generateEditorialTitle,
@@ -127,9 +128,32 @@ export default function App() {
   // Handler to load sample article
   const handleSelectSample = (sample: SampleArticle) => {
     setHtmlSource(sample.html);
-    setArticleUrl(sample.url || '');
-    setArticleTitle('');
-    setBaseUrl('');
+    const url = sample.url || '';
+    setArticleUrl(url);
+    if (url) {
+      try {
+        const parsed = new URL(url);
+        let pathname = parsed.pathname;
+        const lastSlash = pathname.lastIndexOf('/');
+        if (lastSlash >= 0) {
+          pathname = pathname.substring(0, lastSlash + 1);
+        }
+        if (!pathname.endsWith('/')) pathname += '/';
+        setBaseUrl(`${parsed.origin}${pathname}`);
+      } catch {
+        setBaseUrl('');
+      }
+    } else {
+      setBaseUrl('');
+    }
+
+    try {
+      const parsed = parseArticleHtml(sample.html);
+      setArticleTitle(parsed.title || '');
+    } catch {
+      setArticleTitle('');
+    }
+
     setAnalysis(null);
     setPlan([]);
     setErrorMessage(null);
@@ -226,7 +250,7 @@ export default function App() {
 
       // Layer 2: Fast client-side fallback - guaranteed to never throw syntax errors
       if (!data) {
-        data = analyzeArticleLocally(htmlSource);
+        data = analyzeArticleLocally(htmlSource, { articleUrl, articleTitle });
       }
 
       const cleanPath = normalizeBasePath(outputBasePath);
@@ -278,7 +302,7 @@ export default function App() {
     } catch (err: any) {
       console.error('Analyze error:', err);
       try {
-        const localData = analyzeArticleLocally(htmlSource);
+        const localData = analyzeArticleLocally(htmlSource, { articleUrl, articleTitle });
         const cleanPath = normalizeBasePath(outputBasePath);
         const initializedPlan: ImageSlotPlan[] = (localData.plan || []).map((slot: ImageSlotPlan) => {
           const cleanedAlt = cleanEditorialAltText(
