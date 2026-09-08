@@ -157,6 +157,7 @@ export interface ImageSlotPlan {
   brand_applied?: boolean;
   brand_profile?: string;
   is_sensitive_source?: boolean;
+  is_sensitive_document?: boolean;
 
   // AI Recreate specific toggles & analysis
   enable_text_in_image?: boolean;

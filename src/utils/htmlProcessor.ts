@@ -241,6 +241,9 @@ export function cleanEditorialAltText(alt: string, fallbackSubject = ''): string
 /**
  * Detect whether an image slot represents or is derived from an invoice, document, form,
  * table, spreadsheet, financial statement, chart, or structured accounting data.
+ * Prefer actual image evidence (visual_type, descriptions, old_src, old_alt, sensitive flag).
+ * Does NOT classify an ordinary photo as document/table merely because article headings or paragraphs
+ * contain generic accounting words such as "hạch toán".
  */
 export function isDocumentOrTableVisual(slot: {
   visual_type?: string;
@@ -250,11 +253,6 @@ export function isDocumentOrTableVisual(slot: {
   is_sensitive_document?: boolean;
   old_src?: string;
   old_alt?: string;
-  context_heading?: string;
-  context_paragraph?: string;
-  concept?: string;
-  suggested_concept?: string;
-  reason?: string;
 }): boolean {
   // 1. Visual type from AI multimodal analysis
   const vt = (slot.visual_type || '').toLowerCase().trim();
@@ -266,27 +264,28 @@ export function isDocumentOrTableVisual(slot: {
     return true;
   }
 
-  // 2. Multimodal visual & textual descriptions
+  // 2. Multimodal visual & textual descriptions of the actual image
   const desc = `${slot.visual_description || ''} ${slot.textual_description || ''}`.toLowerCase();
   if (
-    /hóa đơn|hoa don|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng tính|tờ khai|báo cáo tài chính|phiếu thu|phiếu chi|bảng kê|invoice|spreadsheet|financial statement|accounting table|balance sheet|data table/i.test(
+    /hóa đơn|hoa don|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng tính|tờ khai|báo cáo tài chính|phiếu thu|phiếu chi|bảng kê|invoice|receipt|spreadsheet|financial statement|accounting table|balance sheet|data table/i.test(
       desc
     )
   ) {
     return true;
   }
 
-  // 3. Text signals from heading, alt, concept, reason, source URL
-  const textEvidence = `${slot.old_src || ''} ${slot.old_alt || ''} ${slot.context_heading || ''} ${slot.context_paragraph || ''} ${slot.concept || ''} ${slot.suggested_concept || ''} ${slot.reason || ''}`.toLowerCase();
+  // 3. Explicit document/table/invoice/form signals from the image itself (old_src, old_alt)
+  // Strictly excludes generic accounting words like "hạch toán" and does NOT check context_heading / context_paragraph
+  const imageEvidence = `${slot.old_src || ''} ${slot.old_alt || ''}`.toLowerCase();
   if (
-    /hóa đơn|hoa don|invoice|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng kê|bang ke|biểu mẫu|bieu mau|tờ khai|to khai|báo cáo tài chính|bao cao tai chinh|hạch toán|hach toan|bảng tính|bang tinh|spreadsheet|table|financial statement|accounting document|phiếu xuất|phieu xuat|phiếu nhập|phieu nhap|mẫu số|mau-so|to-khai/i.test(
-      textEvidence
+    /hóa đơn|hoa don|invoice|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng kê|bang ke|biểu mẫu|bieu mau|tờ khai|to khai|báo cáo tài chính|bao cao tai chinh|bảng tính|bang tinh|spreadsheet|table|financial statement|accounting document|phiếu xuất|phieu xuat|phiếu nhập|phieu nhap|mẫu số|mau-so|to-khai/i.test(
+      imageEvidence
     )
   ) {
     return true;
   }
 
-  // 4. Sensitive source (except explicit pure logo)
+  // 4. Sensitive source / document when appropriate (except explicit pure logo)
   if (slot.is_sensitive_source || slot.is_sensitive_document) {
     const isLogo = /(\/logo\.|logo-|-logo|\/icons\/|brand-logo)/i.test(slot.old_src || '');
     if (!isLogo) return true;
@@ -723,10 +722,6 @@ export function parseArticleHtml(html: string): ParsedArticleResult {
     const isDocOrTable = isDocumentOrTableVisual({
       old_src,
       old_alt,
-      context_heading: heading,
-      context_paragraph: paragraph,
-      reason,
-      is_sensitive_source: classification === 'MANUAL_REVIEW',
     });
 
     let vietnameseConcept: string;

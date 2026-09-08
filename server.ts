@@ -863,8 +863,20 @@ QUY TẮC:
             slotObj.enable_text_in_image = result.enable_text_in_image ?? Boolean(result.primary_headline);
             slotObj.cover_caption = result.cover_caption || result.primary_headline || '';
             
+            const isSensitiveDoc = Boolean(
+              result.is_sensitive_document ||
+              isDocumentOrTableVisual({
+                visual_type: result.visual_type,
+                visual_description: result.visual_description,
+                textual_description: result.textual_description,
+                is_sensitive_document: result.is_sensitive_document,
+                old_src: slotObj.old_src,
+                old_alt: slotObj.old_alt,
+              })
+            );
+
             if (result.classification === 'GENERATE_FROM_SOURCE_AI') {
-              if (hasVisual) {
+              if (hasVisual && !isSensitiveDoc) {
                 slotObj.processing_strategy = 'GENERATE_FROM_SOURCE_AI';
                 slotObj.processing_strategy_status = 'recommended';
                 slotObj.selected = true;
@@ -996,6 +1008,15 @@ QUY TẮC:
           }
         } else if (s.classification === 'REPLACE_AI') {
           if (s.visual_analysis_available && s.confidence === 'high' && s.processing_strategy !== 'GENERATE_FROM_SOURCE_AI') {
+            s.processing_strategy = 'GENERATE_AI';
+            s.processing_strategy_status = 'recommended';
+            s.selected = true;
+          }
+        }
+
+        // Sensitive-document safeguard: never allow GENERATE_FROM_SOURCE_AI for document/table/sensitive source
+        if (s.processing_strategy === 'GENERATE_FROM_SOURCE_AI') {
+          if (s.is_sensitive_source || s.is_sensitive_document || isDocumentOrTableVisual(s)) {
             s.processing_strategy = 'GENERATE_AI';
             s.processing_strategy_status = 'recommended';
             s.selected = true;
@@ -1273,6 +1294,11 @@ ${negativeConstraints}`;
       let rawMime = '';
 
       if (isSourceAiStrategy) {
+        // Strict sensitive-document safeguard: do NOT send source pixels to Gemini image generation
+        if (slot.is_sensitive_source || slot.is_sensitive_document || isDocumentOrTableVisual(slot)) {
+          throw new Error('Không cho phép gửi dữ liệu điểm ảnh (source pixels) của hóa đơn, bảng biểu hoặc tài liệu nhạy cảm tới mô hình sinh ảnh.');
+        }
+
         // Must use original source priority for GENERATE_FROM_SOURCE_AI
         const potentialUrl = slot.source_image?.thumbnail_data_url || slot.source_image?.resolved_url || slot.source_resolved_url || slot.original_src || slot.old_src;
         if (potentialUrl && potentialUrl.startsWith('data:')) {
@@ -1456,6 +1482,17 @@ app.post('/api/generate-image', async (req, res) => {
     if (slot.classification === 'KEEP_ORIGINAL') {
       return res.status(400).json({
         error: 'Vị trí ảnh này được phân loại là KEEP_ORIGINAL (tài liệu/biểu mẫu/dữ liệu gốc), không được phép tạo ảnh thay thế.',
+      });
+    }
+
+    // Sensitive-document safeguard: Invoice/document/form/table/sensitive source must NOT use GENERATE_FROM_SOURCE_AI
+    if (
+      slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI' &&
+      (slot.is_sensitive_source || slot.is_sensitive_document || isDocumentOrTableVisual(slot))
+    ) {
+      return res.status(400).json({
+        error:
+          'Không cho phép tạo ảnh dựa trên ảnh gốc (GENERATE_FROM_SOURCE_AI) đối với hóa đơn, chứng từ, biểu mẫu, bảng biểu hoặc tài liệu nhạy cảm. Vui lòng chọn Tạo hình mới bằng AI (GENERATE_AI).',
       });
     }
 
