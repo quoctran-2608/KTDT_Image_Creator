@@ -239,6 +239,74 @@ export function cleanEditorialAltText(alt: string, fallbackSubject = ''): string
 }
 
 /**
+ * Detect whether an image slot represents or is derived from an invoice, document, form,
+ * table, spreadsheet, financial statement, chart, or structured accounting data.
+ */
+export function isDocumentOrTableVisual(slot: {
+  visual_type?: string;
+  visual_description?: string;
+  textual_description?: string;
+  is_sensitive_source?: boolean;
+  is_sensitive_document?: boolean;
+  old_src?: string;
+  old_alt?: string;
+  context_heading?: string;
+  context_paragraph?: string;
+  concept?: string;
+  suggested_concept?: string;
+  reason?: string;
+}): boolean {
+  // 1. Visual type from AI multimodal analysis
+  const vt = (slot.visual_type || '').toLowerCase().trim();
+  if (
+    /invoice|receipt|document|accounting_document|form|table|spreadsheet|statement|financial_statement|chart|sheet|bill|structured_document/i.test(
+      vt
+    )
+  ) {
+    return true;
+  }
+
+  // 2. Multimodal visual & textual descriptions
+  const desc = `${slot.visual_description || ''} ${slot.textual_description || ''}`.toLowerCase();
+  if (
+    /hóa đơn|hoa don|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng tính|tờ khai|báo cáo tài chính|phiếu thu|phiếu chi|bảng kê|invoice|spreadsheet|financial statement|accounting table|balance sheet|data table/i.test(
+      desc
+    )
+  ) {
+    return true;
+  }
+
+  // 3. Text signals from heading, alt, concept, reason, source URL
+  const textEvidence = `${slot.old_src || ''} ${slot.old_alt || ''} ${slot.context_heading || ''} ${slot.context_paragraph || ''} ${slot.concept || ''} ${slot.suggested_concept || ''} ${slot.reason || ''}`.toLowerCase();
+  if (
+    /hóa đơn|hoa don|invoice|chứng từ|chung tu|bảng biểu|bang bieu|bảng số liệu|bang so lieu|bảng kê|bang ke|biểu mẫu|bieu mau|tờ khai|to khai|báo cáo tài chính|bao cao tai chinh|hạch toán|hach toan|bảng tính|bang tinh|spreadsheet|table|financial statement|accounting document|phiếu xuất|phieu xuat|phiếu nhập|phieu nhap|mẫu số|mau-so|to-khai/i.test(
+      textEvidence
+    )
+  ) {
+    return true;
+  }
+
+  // 4. Sensitive source (except explicit pure logo)
+  if (slot.is_sensitive_source || slot.is_sensitive_document) {
+    const isLogo = /(\/logo\.|logo-|-logo|\/icons\/|brand-logo)/i.test(slot.old_src || '');
+    if (!isLogo) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Builds specialized concept and generation prompt for document/table/invoice explainer visual
+ */
+export function buildDocumentTablePrompt(topic: string): { concept: string; generation_prompt: string } {
+  const cleanTopic = topic.replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '').trim() || 'nghiệp vụ kế toán';
+  return {
+    concept: `Hình ảnh minh họa đồ họa báo chí kinh tế trực quan (explainer visual) về ${cleanTopic.toLowerCase()}. Thiết kế mẫu hóa đơn/chứng từ tinh gọn được trình bày cùng bảng số liệu kế toán rõ ràng các dòng, cột và khối điều chỉnh, bố cục hiện đại, không sao chép tài liệu gốc.`,
+    generation_prompt: `Clean professional Vietnamese accounting editorial illustration and explainer visual about ${cleanTopic.toLowerCase()}. Show a newly designed simplified invoice/document sheet together with a structured accounting table containing clear rows, columns and adjustment blocks. The visual should immediately communicate invoice adjustment and bookkeeping, while using a completely new composition and not reproducing the original document, company information or exact figures.`,
+  };
+}
+
+/**
  * Intelligent heuristics to classify images with high precision:
  * - CRITICAL: Distinguishes between the IMAGE ITSELF (src, alt, filename) and the TOPIC OF THE TEXT.
  *   Never infers an image is an official/legal document merely because the surrounding article discusses
@@ -652,13 +720,31 @@ export function parseArticleHtml(html: string): ParsedArticleResult {
     const editorialAlt = createEditorialAltText(heading, old_alt, index);
     const cleanHeading = heading.replace(/^(\d+[\.\)]|[IVXLCDM]+[\.\)])\s*/i, '').trim();
 
-    const vietnameseConcept = cleanHeading
-      ? `Chuyên viên kế toán doanh nghiệp Việt Nam đang làm việc với hồ sơ chứng từ liên quan đến ${cleanHeading.toLowerCase()} tại văn phòng hiện đại.`
-      : `Chuyên viên tài chính kế toán rà soát số liệu và chứng từ thuế tại văn phòng doanh nghiệp hiện đại.`;
+    const isDocOrTable = isDocumentOrTableVisual({
+      old_src,
+      old_alt,
+      context_heading: heading,
+      context_paragraph: paragraph,
+      reason,
+      is_sensitive_source: classification === 'MANUAL_REVIEW',
+    });
 
-    const englishPrompt = cleanHeading
-      ? `Documentary editorial photography of a Vietnamese finance professional reviewing invoice records related to ${cleanHeading.toLowerCase()} at a modern office desk in Vietnam, natural soft daylight, professional corporate atmosphere.`
-      : `Documentary editorial photography of a Vietnamese accountant working at a modern office desk in Vietnam, natural window lighting, 50mm lens.`;
+    let vietnameseConcept: string;
+    let englishPrompt: string;
+
+    if (isDocOrTable) {
+      const docPrompt = buildDocumentTablePrompt(cleanHeading || title || 'nghiệp vụ kế toán');
+      vietnameseConcept = docPrompt.concept;
+      englishPrompt = docPrompt.generation_prompt;
+    } else {
+      vietnameseConcept = cleanHeading
+        ? `Chuyên viên kế toán doanh nghiệp Việt Nam đang làm việc với hồ sơ chứng từ liên quan đến ${cleanHeading.toLowerCase()} tại văn phòng hiện đại.`
+        : `Chuyên viên tài chính kế toán rà soát số liệu và chứng từ thuế tại văn phòng doanh nghiệp hiện đại.`;
+
+      englishPrompt = cleanHeading
+        ? `Documentary editorial photography of a Vietnamese finance professional reviewing invoice records related to ${cleanHeading.toLowerCase()} at a modern office desk in Vietnam, natural soft daylight, professional corporate atmosphere.`
+        : `Documentary editorial photography of a Vietnamese accountant working at a modern office desk in Vietnam, natural window lighting, 50mm lens.`;
+    }
 
     images.push({
       index,
@@ -1165,8 +1251,17 @@ export function analyzeArticleLocally(
     s.alt = s.suggested_alt;
     s.alt_text = s.suggested_alt;
     s.concept = s.suggested_concept;
-    if (!s.generation_prompt) {
-      s.generation_prompt = `Documentary editorial photography of a Vietnamese finance accountant in a modern office in Vietnam, natural light, 50mm lens.`;
+    if (!s.generation_prompt || s.generation_prompt.includes('50mm lens')) {
+      if (isDocumentOrTableVisual(s)) {
+        const docPrompt = buildDocumentTablePrompt(s.context_heading || s.title || effectiveTitle);
+        s.generation_prompt = docPrompt.generation_prompt;
+        if (!s.concept || s.concept.includes('văn phòng hiện đại')) {
+          s.concept = docPrompt.concept;
+          s.suggested_concept = docPrompt.concept;
+        }
+      } else if (!s.generation_prompt) {
+        s.generation_prompt = `Documentary editorial photography of a Vietnamese finance accountant in a modern office in Vietnam, natural light, 50mm lens.`;
+      }
     }
   });
 

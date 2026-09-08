@@ -14,6 +14,8 @@ import {
   isUnaccentedOrFilenameText,
   generateEditorialTitle,
   generateEditorialCaption,
+  isDocumentOrTableVisual,
+  buildDocumentTablePrompt,
 } from './src/utils/htmlProcessor';
 import {
   slugifyVietnamese,
@@ -790,14 +792,23 @@ Phân tích ảnh nguồn sau đây:
 - Phân tích thị giác: ${hasVisual ? 'ĐÃ CÓ ảnh đính kèm.' : 'KHÔNG có ảnh đính kèm, chỉ dùng văn bản.'}
 
 QUY TẮC:
-1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice").
+1. Xác định "visual_type" (ví dụ: "document", "screenshot", "illustration", "banner", "photo", "form", "invoice", "table", "spreadsheet", "financial_statement").
 2. Nếu là tài liệu, biểu mẫu, hóa đơn, công văn, screenshot phần mềm chứa dữ liệu nhạy cảm hoặc dày đặc chữ -> "is_sensitive_document: true".
 3. Trích xuất "primary_headline" nếu ảnh có chữ lớn/nổi bật, và "primary_caption" nếu có dòng chữ phụ trợ nổi bật.
 4. Xác định "classification":
    - Nếu is_sensitive_document = true -> MANUAL_REVIEW, confidence: 'high'
    - Nếu ảnh phong cảnh/minh họa/banner/stock -> GENERATE_FROM_SOURCE_AI
    - Nếu mâu thuẫn giữa chữ và ảnh -> MANUAL_REVIEW
-5. Nếu GENERATE_FROM_SOURCE_AI:
+5. Gợi ý concept (Tiếng Việt) và generation_prompt (Tiếng Anh) cho chiến lược GENERATE_AI:
+   - NẾU ảnh nguồn thuộc nhóm tài liệu/bảng biểu/hóa đơn/chứng từ/biểu mẫu (visual_type là invoice, accounting document, form, table, spreadsheet, financial statement, structured document, hoặc ảnh chứa bảng dữ liệu/hóa đơn/chứng từ):
+     + KHÔNG yêu cầu AI sao chép hóa đơn/tài liệu gốc.
+     + concept (Tiếng Việt): Đề xuất dạng ảnh minh họa đồ họa báo chí kinh tế / explainer visual giải thích nghiệp vụ kế toán về chủ đề liên quan. Thể hiện các yếu tố trực quan như: mẫu chứng từ/hóa đơn tinh gọn, bảng số liệu kế toán có dòng và cột rõ ràng, các khối đối chiếu/điều chỉnh, máy tính cầm tay hoặc bảng tính phù hợp.
+     + generation_prompt (Tiếng Anh): Ưu tiên dạng professional Vietnamese accounting editorial illustration / explainer visual. Ví dụ tinh thần: "Create a clean Vietnamese accounting editorial visual about [chủ đề nghiệp vụ bằng tiếng Anh]. Show a newly designed simplified invoice/document together with a structured accounting table containing clear rows, columns and adjustment blocks. The visual should immediately communicate invoice adjustment and bookkeeping, while using a completely new composition and not reproducing the original document, company information or exact figures."
+     + Ảnh mới phải: khác bố cục tài liệu gốc rõ rệt; không chép nguyên layout; không chép số liệu, tên doanh nghiệp, mã số thuế hoặc nội dung nhạy cảm của hóa đơn gốc; chỉ giữ Ý NGHĨA nghiệp vụ/chủ đề.
+     + Nếu enable_text_in_image = true: chỉ dùng headline đã được hệ thống chọn (cover_caption), tuyệt đối KHÔNG OCR toàn bộ tài liệu.
+   - NẾU ảnh nguồn là người/văn phòng thông thường (photo, office, person):
+     + Giữ phong cách documentary editorial journalism photography: chuyên viên kế toán làm việc tại văn phòng hiện đại ở Việt Nam, ánh sáng tự nhiên từ cửa sổ, ống kính 50mm f/2.8.
+6. Nếu GENERATE_FROM_SOURCE_AI (chỉ áp dụng cho ảnh minh họa/phong cảnh/stock KHÔNG nhạy cảm, KHÔNG phải hóa đơn/tài liệu):
    - Ý TƯỞNG TẠO ẢNH: AI sẽ tạo MỘT ẢNH MỚI. Ảnh mới phải GIỮ Ý NGHĨA CHÍNH của ảnh cũ, nhưng KHÁC ĐỦ NHIỀU để không bị xem là bắt chước (thay đổi góc máy, bố cục, ánh sáng).
    - Nếu ảnh gốc có chữ nổi bật -> "enable_text_in_image: true", và gợi ý lại nội dung chữ trong "cover_caption" (viết lại cho hay, không copy nguyên văn).
    - "generation_prompt" (Tiếng Anh) phải ghi rõ: "preserve the same core topic, do NOT make a near-duplicate, create a clearly new composition."
@@ -1018,8 +1029,17 @@ QUY TẮC:
       s.final_filename = uniqueFilenames[idx];
       s.alt = s.suggested_alt;
       s.concept = s.suggested_concept;
-      if (!s.generation_prompt) {
-        s.generation_prompt = `Documentary editorial photography of a Vietnamese finance accountant in a modern office in Vietnam, natural light, 50mm lens.`;
+      if (!s.generation_prompt || s.generation_prompt.includes('50mm lens')) {
+        if (isDocumentOrTableVisual(s)) {
+          const docPrompt = buildDocumentTablePrompt(s.context_heading || s.title || effectiveArticleTitle);
+          s.generation_prompt = docPrompt.generation_prompt;
+          if (!s.concept || s.concept.includes('văn phòng hiện đại')) {
+            s.concept = docPrompt.concept;
+            s.suggested_concept = docPrompt.concept;
+          }
+        } else if (!s.generation_prompt) {
+          s.generation_prompt = `Documentary editorial photography of a Vietnamese finance accountant in a modern office in Vietnam, natural light, 50mm lens.`;
+        }
       }
     });
 
@@ -1176,18 +1196,36 @@ export async function generateImageWithVertex(
     ? 'Ảnh ngang tỷ lệ rộng 16:9 (Wide 16:9 landscape aspect ratio), bố cục ảnh bìa báo chí'
     : 'Ảnh ngang tỷ lệ chuẩn 4:3 (Standard 4:3 editorial landscape aspect ratio), minh họa trong bài';
 
+  const isDocVisual = isDocumentOrTableVisual(slot);
+
   let textRenderingDirective = '';
   let negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   
   if (slot.enable_text_in_image && slot.cover_caption && slot.cover_caption.trim()) {
-    textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
-    negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Do not create any fake corporate logos. Do not create any fake watermarks. Do not create fake stamps or government seals. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
+    textRenderingDirective = `\n\nARTICLE TOPIC:\n"${articleTitle || ''}"\n\nEXACT VIETNAMESE COVER HEADLINE TO RENDER:\n"${slot.cover_caption.trim()}"\n\nRender the EXACT Vietnamese headline shown above.\nPreserve every Vietnamese letter, accent mark, capitalization and word order.\nDo not translate it.\nDo not paraphrase it.\nDo not add words.\nDo not remove words.\nDo not create a second headline.\nDesign it as an intentional part of the editorial cover (1-3 lines, highly legible, strong contrast, professional typography).\nEnsure the text does not cover important faces or key visual blocks.\nLeave the bottom-right corner empty and safe for a later logo insertion.`;
+    negativeConstraints = isDocVisual
+      ? 'STRICT NEGATIVE CONSTRAINTS: Do NOT OCR or copy full text from any original document. Do NOT reproduce real company names, real tax identification numbers, or confidential figures. Render ONLY the requested headline text. Do NOT create fake corporate logos, fake watermarks, fake stamps, or government seals. No cartoonish 3D render, no distorted AI artifacts.'
+      : 'STRICT NEGATIVE CONSTRAINTS: Do not create any fake corporate logos. Do not create any fake watermarks. Do not create fake stamps or government seals. Do not add any random decorative text other than the EXACT headline requested. Do not use cartoonish 3D renders or artificial AI artifacts.';
   } else if (isFeatured || slot.enable_text_in_image === false) {
     // Ensure no text if not enabled
-    negativeConstraints = 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
+    negativeConstraints = isDocVisual
+      ? 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals. Do NOT reproduce the original document layout, do NOT copy confidential figures, real company names, or tax codes. No cartoonish 3D render, no artificial AI artifacts.'
+      : 'STRICT NEGATIVE CONSTRAINTS: Absolutely NO text, NO numbers, NO letters, NO words written in the image, NO corporate logos, NO watermarks, NO fake stamps, NO government seals, NO fake tax forms, NO cheesy handshake poses, NO cartoonish 3D render, NO artificial AI artifacts.';
   }
 
-  const prompt = `Professional editorial journalism photography for a prestigious Vietnamese financial, taxation, and corporate magazine.
+  let prompt: string;
+  if (isDocVisual) {
+    prompt = `Professional Vietnamese accounting editorial illustration and explainer visual for a prestigious financial, taxation, and corporate magazine.
+Topic of article: "${articleTitle || 'Kinh tế, Kế toán và Thuế Việt Nam'}".
+${contextHeading}${contextPara}
+Visual Subject & Concept: ${visualConcept}.
+Key Visual Elements: A newly designed, simplified invoice or accounting document sheet, structured financial table blocks with clear visible rows and columns, adjustment rows and accounting entries, calculation blocks, clean accounting worksheet or laptop interface where appropriate. The visual immediately communicates Vietnamese accounting bookkeeping, invoice handling, and structured data tables.
+Composition & Visual Style: ${orientation}. Clean modern graphic explainer illustration style with refined typography, balanced layout, professional corporate color palette (teal, navy, slate, warm paper tone). High clarity and sophistication.
+Strict Privacy & Non-Duplication: Genuinely brand new composition. Do NOT copy the layout or trace the original document. Do NOT include real company names, real tax identification numbers, confidential figures, signatures, or official red stamps. Preserve only the accounting workflow meaning and topic.${textRenderingDirective}
+
+${negativeConstraints}`;
+  } else {
+    prompt = `Professional editorial journalism photography for a prestigious Vietnamese financial, taxation, and corporate magazine.
 Topic of article: "${articleTitle || 'Kinh tế, Kế toán và Thuế Việt Nam'}".
 ${contextHeading}${contextPara}
 Visual Subject & Concept: ${visualConcept}.
@@ -1196,6 +1234,7 @@ Setting & Atmosphere: Authentic contemporary Vietnamese business office or corpo
 Tone: Trustworthy, professional, sophisticated, warm neutral lighting.${textRenderingDirective}
 
 ${negativeConstraints}`;
+  }
 
   // Initialize official Google Gen AI SDK in Vertex AI mode
   const ai = new GoogleGenAI({

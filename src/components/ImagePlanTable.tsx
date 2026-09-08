@@ -727,6 +727,8 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
               const isNeedsDecision = slot.processing_strategy === 'NEEDS_DECISION';
               const isAi = slot.processing_strategy === 'GENERATE_AI' || slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
               const isRebuildSource = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
+              const isGenerateAi = slot.processing_strategy === 'GENERATE_AI';
+              const isGenerateFromSource = slot.processing_strategy === 'GENERATE_FROM_SOURCE_AI';
               const isExpanded = expandedDetails[slot.slot_id];
 
               return (
@@ -844,36 +846,48 @@ export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({
                           </div>
                         )}
 
-                      {/* Strategy Switcher Toggle Buttons */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-700 mr-1">
+                      {/* Strategy Switcher Single-Choice / Segmented Control */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
+                        <span className="text-xs font-semibold text-slate-700 shrink-0">
                           Chiến lược:
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleStrategyChange(originalIdx, 'GENERATE_AI')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            isAi
-                              ? 'bg-[#0F766E] text-white shadow-2xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
+                        <div
+                          className="inline-flex flex-wrap p-1 rounded-xl bg-slate-100/90 border border-slate-300 gap-1.5"
+                          role="radiogroup"
+                          aria-label="Chiến lược tạo ảnh inline"
                         >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Tạo hình mới bằng AI</span>
-                        </button>
+                          {/* Nút 1: Tạo hình mới bằng AI */}
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={isGenerateAi}
+                            onClick={() => handleStrategyChange(originalIdx, 'GENERATE_AI')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                              isGenerateAi
+                                ? 'bg-[#0F766E] text-white shadow-xs border border-teal-700'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                            }`}
+                          >
+                            <Sparkles className={`w-3.5 h-3.5 ${isGenerateAi ? 'text-white' : 'text-teal-600'}`} />
+                            <span>Tạo hình mới bằng AI</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleStrategyChange(originalIdx, 'GENERATE_FROM_SOURCE_AI')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            isRebuildSource
-                              ? 'bg-amber-800 text-white shadow-2xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
-                        </button>
+                          {/* Nút 2: Tạo ảnh mới dựa trên ảnh gốc bằng AI */}
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={isGenerateFromSource}
+                            onClick={() => handleStrategyChange(originalIdx, 'GENERATE_FROM_SOURCE_AI')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                              isGenerateFromSource
+                                ? 'bg-amber-800 text-white shadow-xs border border-amber-900'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                            }`}
+                          >
+                            <FileText className={`w-3.5 h-3.5 ${isGenerateFromSource ? 'text-white' : 'text-amber-700'}`} />
+                            <span>Tạo ảnh mới dựa trên ảnh gốc bằng AI</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Editor-Facing Vietnamese Concept */}
