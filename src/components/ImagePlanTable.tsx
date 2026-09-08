@@ -44,14 +44,22 @@ interface ImagePlanTableProps {
 }
 
 
-const hasUsableOriginalSource = (slot: ImageSlotPlan): boolean => {
-  return Boolean(
-    slot.source_image?.thumbnail_data_url ||
-    (slot.source_image?.available && slot.source_image?.resolved_url) ||
-    slot.source_resolved_url ||
-    slot.original_src ||
-    (slot.old_src && (slot.old_src.startsWith('http') || slot.old_src.startsWith('data:')))
+const isDirectImageSource = (value?: string) =>
+  Boolean(
+    value &&
+    (
+      /^https?:\/\//i.test(value) ||
+      /^data:image\//i.test(value)
+    )
   );
+
+const hasUsableOriginalSource = (slot: ImageSlotPlan): boolean => {
+  if (slot.source_image?.thumbnail_data_url && /^data:image\//i.test(slot.source_image.thumbnail_data_url)) return true;
+  if (slot.source_image?.available && isDirectImageSource(slot.source_image?.resolved_url)) return true;
+  if (isDirectImageSource(slot.source_resolved_url)) return true;
+  if (isDirectImageSource(slot.original_src)) return true;
+  if (isDirectImageSource(slot.old_src)) return true;
+  return false;
 };
 
 export const ImagePlanTable: React.FC<ImagePlanTableProps> = ({

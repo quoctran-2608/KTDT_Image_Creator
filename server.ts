@@ -886,6 +886,7 @@ QUY TẮC:
             slotObj.has_text = result.has_text;
             slotObj.text_density = result.text_density;
             slotObj.primary_headline = result.primary_headline;
+            slotObj.primary_caption = result.primary_caption;
             slotObj.is_sensitive_source = result.is_sensitive_document;
             slotObj.visual_description = result.visual_description;
             slotObj.textual_description = result.textual_description;
@@ -974,7 +975,7 @@ QUY TẮC:
             s.reason = 'Chưa phân tích được ảnh thực tế; quyết định hiện dựa trên ngữ cảnh văn bản.';
           }
         } else if (s.classification === 'REPLACE_AI') {
-          if (s.visual_analysis_available && s.confidence === 'high') {
+          if (s.visual_analysis_available && s.confidence === 'high' && s.processing_strategy !== 'GENERATE_FROM_SOURCE_AI') {
             s.processing_strategy = 'GENERATE_AI';
             s.processing_strategy_status = 'recommended';
             s.selected = true;
@@ -1278,13 +1279,17 @@ ${negativeConstraints}`;
         let finalMime = rawMime;
         try {
           const normalized = await normalizeImageForAiVision(rawBuffer);
-          if (normalized) {
+          if (!normalized) {
+            if (isSourceAiStrategy) {
+              throw new Error('Không thể chuẩn hóa ảnh nguồn để gửi AI.');
+            }
+          } else {
             finalBuffer = normalized.buffer;
             finalMime = normalized.mimeType;
           }
         } catch(e) {
           if (isSourceAiStrategy) {
-            throw new Error('Lỗi khi chuẩn hóa ảnh nguồn: ' + e.message);
+            throw new Error('Không thể chuẩn hóa ảnh nguồn để gửi AI.');
           }
         }
 
